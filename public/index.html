@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Puppet Module Version Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                },
+            },
+        }
+    </script>
+    <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --card: 0 0% 100%;
+            --card-foreground: 222.2 84% 4.9%;
+            --popover: 0 0% 100%;
+            --popover-foreground: 222.2 84% 4.9%;
+            --primary: 222.2 47.4% 11.2%;
+            --primary-foreground: 210 40% 98%;
+            --secondary: 210 40% 96.1%;
+            --secondary-foreground: 222.2 47.4% 11.2%;
+            --muted: 210 40% 96.1%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+            --accent: 210 40% 96.1%;
+            --accent-foreground: 222.2 47.4% 11.2%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 222.2 84% 4.9%;
+            --radius: 0.5rem;
+        }
+
+        .dark {
+            --background: 222.2 84% 4.9%;
+            --foreground: 210 40% 98%;
+            --card: 222.2 84% 4.9%;
+            --card-foreground: 210 40% 98%;
+            --popover: 222.2 84% 4.9%;
+            --popover-foreground: 210 40% 98%;
+            --primary: 210 40% 98%;
+            --primary-foreground: 222.2 47.4% 11.2%;
+            --secondary: 217.2 32.6% 17.5%;
+            --secondary-foreground: 210 40% 98%;
+            --muted: 217.2 32.6% 17.5%;
+            --muted-foreground: 215 20.2% 65.1%;
+            --accent: 217.2 32.6% 17.5%;
+            --accent-foreground: 210 40% 98%;
+            --destructive: 0 62.8% 30.6%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 217.2 32.6% 17.5%;
+            --input: 217.2 32.6% 17.5%;
+            --ring: 212.7 26.8% 83.9%;
+        }
+    </style>
+</head>
+<body class="bg-background text-foreground min-h-screen font-sans antialiased">
+    <div class="container mx-auto p-4">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Puppet Module Version Checker</h1>
+            <button onclick="toggleDarkMode()" id="darkModeToggle" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                Light/Dark
+            </button>
+        </div>
+        <div class="bg-card rounded-lg shadow-md overflow-hidden">
+            <table id="moduleTable" class="w-full">
+                <thead>
+                    <tr class="bg-muted">
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Modul</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Server Version</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Forge Version</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Link</th>
+                    </tr>
+                </thead>
+                <tbody id="moduleList"></tbody>
+            </table>
+        </div>
+        <button onclick="fetchModuleData()" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            Versionen prüfen
+        </button>
+    </div>
+
+    <script>
+        const serverVersions = {
+            'dsc-auditpolicydsc': '1.4.0-0-9',
+            'pcfens-ca_cert': '2.5.0',
+            'puppet-alternatives': '5.1.0',
+            'puppet-archive': '7.1.0',
+            'puppet-systemd': '6.6.0',
+            'puppetlabs-apt': '9.4.0',
+            'puppetlabs-facts': '1.4.0',
+            'puppetlabs-inifile': '6.1.1',
+            'puppetlabs-powershell': '6.0.0',
+            'puppetlabs-registry': '5.0.1',
+            'puppetlabs-stdlib': '9.6.0',
+            'saz-sudo': '8.0.0'
+        };
+
+        function compareVersions(v1, v2) {
+            const parts1 = v1.replace(/^v/, '').split('-')[0].split('.').map(Number);
+            const parts2 = v2.replace(/^v/, '').split('-')[0].split('.').map(Number);
+            for (let i = 0; i < 3; i++) {
+                if (parts1[i] > parts2[i]) return 1;
+                if (parts1[i] < parts2[i]) return -1;
+            }
+            return 0;
+        }
+
+        function toggleDarkMode() {
+            const isDarkMode = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDarkMode);
+            updateButtonText(isDarkMode);
+        }
+
+        function updateButtonText(isDarkMode) {
+            const button = document.getElementById('darkModeToggle');
+            button.textContent = isDarkMode ? 'Light' : 'Dark';
+        }
+
+        async function fetchModuleData() {
+            try {
+                const response = await fetch('/api/modules');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const modules = await response.json();
+
+                const moduleList = document.getElementById('moduleList');
+                moduleList.innerHTML = ''; // Tabelle leeren
+
+                modules.forEach(module => {
+                    const row = document.createElement('tr');
+                    const serverVersion = serverVersions[module.name] || 'Unbekannt';
+                    const comparison = compareVersions(serverVersion, module.forgeVersion);
+                    let rowClass = '';
+                    
+                    if (module.deprecated) {
+                        rowClass = 'bg-red-500/20';
+                    } else if (comparison !== 0) {
+                        rowClass = 'bg-yellow-500/20';
+                    }
+                    
+                    row.innerHTML = `
+                        <td class="px-4 py-2 border-t border-muted">${module.name}</td>
+                        <td class="px-4 py-2 border-t border-muted">${serverVersion}</td>
+                        <td class="px-4 py-2 border-t border-muted">${module.forgeVersion}</td>
+                        <td class="px-4 py-2 border-t border-muted">${module.deprecated ? 'Deprecated' : 'Aktiv'}</td>
+                        <td class="px-4 py-2 border-t border-muted">
+                            <a href="${module.url}" target="_blank" class="text-primary hover:underline">Forge Link</a>
+                        </td>
+                    `;
+                    row.className = rowClass;
+                    moduleList.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Fehler beim Abrufen der Moduldaten:', error);
+            }
+        }
+
+        // Beim Laden der Seite
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const isDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (isDarkMode) {
+                document.documentElement.classList.add('dark');
+            }
+            updateButtonText(isDarkMode);
+            fetchModuleData(); // Initial data fetch
+        });
+    </script>
+</body>
+</html>
