@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EOL Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                },
+            },
+        }
+    </script>
+    <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --card: 0 0% 100%;
+            --card-foreground: 222.2 84% 4.9%;
+            --popover: 0 0% 100%;
+            --popover-foreground: 222.2 84% 4.9%;
+            --primary: 222.2 47.4% 11.2%;
+            --primary-foreground: 210 40% 98%;
+            --secondary: 210 40% 96.1%;
+            --secondary-foreground: 222.2 47.4% 11.2%;
+            --muted: 210 40% 96.1%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+            --accent: 210 40% 96.1%;
+            --accent-foreground: 222.2 47.4% 11.2%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 222.2 84% 4.9%;
+            --radius: 0.5rem;
+        }
+    
+        .dark {
+            --background: 222.2 84% 4.9%;
+            --foreground: 210 40% 98%;
+            --card: 222.2 84% 4.9%;
+            --card-foreground: 210 40% 98%;
+            --popover: 222.2 84% 4.9%;
+            --popover-foreground: 210 40% 98%;
+            --primary: 210 40% 98%;
+            --primary-foreground: 222.2 47.4% 11.2%;
+            --secondary: 217.2 32.6% 17.5%;
+            --secondary-foreground: 210 40% 98%;
+            --muted: 217.2 32.6% 17.5%;
+            --muted-foreground: 215 20.2% 65.1%;
+            --accent: 217.2 32.6% 17.5%;
+            --accent-foreground: 210 40% 98%;
+            --destructive: 0 62.8% 30.6%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 217.2 32.6% 17.5%;
+            --input: 217.2 32.6% 17.5%;
+            --ring: 212.7 26.8% 83.9%;
+        }
+    
+        /* Zusätzliche Stile für die farbliche Markierung */
+        .status-green { background-color: rgba(0, 255, 0, 0.1); }
+        .status-yellow { background-color: rgba(255, 255, 0, 0.1); }
+        .status-red { background-color: rgba(255, 0, 0, 0.1); }
+    </style>
+</head>
+<body class="bg-background text-foreground min-h-screen font-sans antialiased">
+    <nav class="bg-card shadow-md">
+        <div class="container mx-auto px-6 py-3">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-foreground">
+                    System Tracker
+                </div>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-foreground hover:text-primary">Home</a>
+                    <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary">
+                        Dark Mode
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold mb-6">EOL Tracker</h1>
+        <div class="space-y-8">
+            <div>
+                <h2 class="text-2xl font-bold mb-4">Debian</h2>
+                <div class="bg-card rounded-lg shadow-md overflow-hidden mb-4">
+                    <table id="debianEolTable" class="w-full">
+                        <thead>
+                            <tr class="bg-muted">
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Version</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Codename</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Release Date</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Extended Support</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">EOL</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Latest</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <button onclick="fetchEolData('debian')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    Debian abrufen
+                </button>
+            </div>
+            <div>
+                <h2 class="text-2xl font-bold mb-4">SLES</h2>
+                <div class="bg-card rounded-lg shadow-md overflow-hidden mb-4">
+                    <table id="slesEolTable" class="w-full">
+                        <thead>
+                            <tr class="bg-muted">
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Version</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Release Date</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Extended Support</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">EOL</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <button onclick="fetchEolData('sles')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    SLES abrufen
+                </button>
+            </div>
+            <div>
+                <h2 class="text-2xl font-bold mb-4">Windows Server</h2>
+                <div class="bg-card rounded-lg shadow-md overflow-hidden mb-4">
+                    <table id="windowsserverEolTable" class="w-full">
+                        <thead>
+                            <tr class="bg-muted">
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Version</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Release Date</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Support End</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">EOL</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Latest</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">LTS</th>
+                                <th class="px-4 py-2 text-left font-medium text-muted-foreground">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <button onclick="fetchEolData('windows-server')" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    Windows Server abrufen
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleDarkMode() {
+            const isDarkMode = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDarkMode);
+            updateButtonText(isDarkMode);
+        }
+
+        function updateButtonText(isDarkMode) {
+            const button = document.getElementById('darkModeToggle');
+            button.textContent = isDarkMode ? 'Light Mode' : 'Dark Mode';
+        }
+
+        function getYearDifference(date1, date2) {
+            const diffTime = Math.abs(date2 - date1);
+            const diffYears = diffTime / (1000 * 60 * 60 * 24 * 365.25);
+            return diffYears;
+        }
+
+        function getStatusColor(supportEndDate, isLatestVersion = false) {
+            if (isLatestVersion) return 'status-green';
+            
+            const now = new Date();
+            const supportEnd = new Date(supportEndDate);
+            const yearDiff = getYearDifference(now, supportEnd);
+
+            if (now > supportEnd) {
+                return 'status-red';
+            } else if (yearDiff <= 1) {
+                return 'status-yellow';
+            } else {
+                return 'status-green';
+            }
+        }
+
+        function compareSlesVersions(a, b) {
+            const versionA = parseFloat(a.cycle);
+            const versionB = parseFloat(b.cycle);
+            return versionB - versionA;
+        }
+
+        async function fetchEolData(system) {
+            try {
+                const response = await fetch(`/api/eol/${system}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                const tableId = `${system.replace('-', '')}EolTable`;
+                const table = document.getElementById(tableId);
+                if (!table) {
+                    console.error(`Table with id ${tableId} not found`);
+                    return;
+                }
+                const tbody = table.querySelector('tbody');
+                if (!tbody) {
+                    console.error(`Tbody in table with id ${tableId} not found`);
+                    return;
+                }
+                tbody.innerHTML = '';
+
+                if (system === 'sles') {
+                    data.sort(compareSlesVersions);
+                }
+
+                data.forEach(version => {
+                    const row = tbody.insertRow();
+                    let supportEndDate;
+                    let isLatestVersion = false;
+
+                    if (system === 'debian') {
+                        supportEndDate = version.extendedSupport;
+                    } else if (system === 'sles') {
+                        supportEndDate = version.extendedSupport;
+                        isLatestVersion = version.cycle === '15.6';
+                    } else if (system === 'windows-server') {
+                        supportEndDate = version.eol;
+                    }
+
+                    const statusColor = getStatusColor(supportEndDate, isLatestVersion);
+                    row.classList.add(statusColor);
+
+                    if (system === 'debian') {
+                        row.innerHTML = `
+                            <td class="px-4 py-2 border-t border-muted">${version.cycle}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.codename || 'N/A'}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.releaseDate || 'N/A'}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.extendedSupport || 'N/A'}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.eol || 'N/A'}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.latest || 'N/A'}</td>
+                            <td class="px-4 py-2 border-t border-muted">
+                                <a href="${version.link}" target="_blank" class="text-primary hover:underline">Mehr Info</a>
+                            </td>
+                        `;
+                    } else if (system === 'sles') {
+                        row.innerHTML = `
+                            <td class="px-4 py-2 border-t border-muted">${version.cycle}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.releaseDate || 'N/A'}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.extendedSupport || 'Noch nicht festgelegt'}</td>
+                            <td class="px-4 py-2 border-t border-muted">${version.eol || 'Noch nicht festgelegt'}</td>
+                            <td class="px-4 py-2 border-t border-muted">
+                                <a href="https://www.suse.com/download/sles/" target="_blank" class="text-primary hover:underline">Mehr Info</a>
+                            </td>
+                        `;
+                    } else if (system === 'windows-server') {
+                        if (version.cycle === "2019" || version.cycle === "2022") {
+                            row.innerHTML = `
+                                <td class="px-4 py-2 border-t border-muted">${version.cycle}</td>
+                                <td class="px-4 py-2 border-t border-muted">${version.releaseDate || 'N/A'}</td>
+                                <td class="px-4 py-2 border-t border-muted">${version.support || 'N/A'}</td>
+                                <td class="px-4 py-2 border-t border-muted">${version.eol || 'N/A'}</td>
+                                <td class="px-4 py-2 border-t border-muted">${version.latest || 'N/A'}</td>
+                                <td class="px-4 py-2 border-t border-muted">${version.lts ? 'Ja' : 'Nein'}</td>
+                                <td class="px-4 py-2 border-t border-muted">
+                                    <a href="${version.link}" target="_blank" class="text-primary hover:underline">Mehr Info</a>
+                                </td>
+                            `;
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error(`Fehler beim Abrufen der ${system} EOL-Daten:`, error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const isDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (isDarkMode) {
+                document.documentElement.classList.add('dark');
+            }
+            updateButtonText(isDarkMode);
+            fetchEolData('debian');
+            fetchEolData('sles');
+            fetchEolData('windows-server');
+        });
+    </script>
+</body>
+</html>
