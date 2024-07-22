@@ -31,7 +31,7 @@ cache = Cache(app, config=cache_config)
 def get_modules():
     modules = [
         'dsc-auditpolicydsc',
-        'pcfens-ca_cert',
+        'puppet-ca_cert',
         'puppet-alternatives',
         'puppet-archive',
         'puppet-systemd',

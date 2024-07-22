@@ -20,7 +20,8 @@ const serverVersions = {
     'puppetlabs-powershell': '6.0.0',
     'puppetlabs-registry': '5.0.1',
     'puppetlabs-stdlib': '9.6.0',
-    'saz-sudo': '8.0.0'
+    'saz-sudo': '8.0.0',
+    'puppet-ca_cert': '3.1.0'
 };
 
 function compareVersions(v1, v2) {
@@ -89,19 +90,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
     }
     updateButtonText(isDarkMode);
 
-    // Prüfe das System-Farbschema
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-        document.documentElement.classList.add('light');
-        updateButtonText(true);
-    }
-
-    // Lade die Moduldaten beim Seitenaufruf
+    // Automatisches Laden der Daten beim Seitenaufruf
     fetchModuleData();
-});
-
-// Reagiere auf Änderungen des System-Farbschemas
-window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
-    const newColorScheme = e.matches ? "light" : "dark";
-    document.documentElement.classList.toggle('light', e.matches);
-    updateButtonText(e.matches);
 });
