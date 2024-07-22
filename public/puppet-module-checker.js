@@ -11,7 +11,6 @@ function updateButtonText(isDarkMode) {
 
 const serverVersions = {
     'dsc-auditpolicydsc': '1.4.0-0-9',
-    'puppet-ca_cert': '3.1.0',
     'puppet-alternatives': '5.1.0',
     'puppet-archive': '7.1.0',
     'puppet-systemd': '7.1.0',
