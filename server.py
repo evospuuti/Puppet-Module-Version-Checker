@@ -1,24 +1,45 @@
-from flask import Flask, jsonify, send_from_directory
-from flask_caching import Cache
-import requests
 import os
-import json
+import logging
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+from flask_caching import Cache
+from urllib.parse import urlparse
+import requests
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
 cache_config = {
-    'CACHE_TYPE': 'SimpleCache',
+    "CACHE_TYPE": "SimpleCache",
+    "CACHE_DEFAULT_TIMEOUT": 300
 }
-if 'REDIS_URL' in os.environ:
-    cache_config = {
-        'CACHE_TYPE': 'redis',
-        'CACHE_REDIS_URL': os.environ['REDIS_URL']
-    }
-cache = Cache(app, config=cache_config)
+
+if "REDIS_URL" in os.environ:
+    redis_url = os.environ["REDIS_URL"]
+    logger.info("Redis URL found in environment variables")
+    
+    parsed_url = urlparse(redis_url)
+    if not parsed_url.scheme:
+        redis_url = f"redis://{redis_url}"
+    
+    cache_config.update({
+        "CACHE_TYPE": "redis",
+        "CACHE_REDIS_URL": redis_url
+    })
+
+try:
+    cache = Cache(app, config=cache_config)
+    logger.info("Cache initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Redis cache: {e}")
+    logger.info("Falling back to SimpleCache")
+    cache = Cache(app, config={"CACHE_TYPE": "SimpleCache"})
 
 @app.route('/api/modules', methods=['GET'])
-@cache.cached(timeout=86400)
+@cache.cached(timeout=3600)  # Cache für 1 Stunde
 def get_modules():
     try:
         modules = [
@@ -57,10 +78,11 @@ def get_modules():
                 })
         return jsonify(result)
     except Exception as e:
+        logger.error(f"Error in get_modules: {str(e)}")
         return jsonify({"error": "An unexpected error occurred"}), 500
 
 @app.route('/api/eol/<system>', methods=['GET'])
-@cache.cached(timeout=86400)
+@cache.cached(timeout=86400)  # Cache für 24 Stunden
 def get_eol_data(system):
     try:
         url = f'https://endoflife.date/api/{system}.json'
@@ -69,18 +91,52 @@ def get_eol_data(system):
         data = response.json()
         
         if system == 'debian':
-            # Filter für Debian 11 und 12
             data = [version for version in data if version['cycle'] in ['11', '12']]
         elif system == 'sles':
-            # Filter für SLES 12 SP5, 15, 15 SP1 bis SP6
             data = [version for version in data if version['cycle'] in ['12.5', '15', '15.1', '15.2', '15.3', '15.4', '15.5', '15.6']]
         elif system == 'windows-server':
-            # Filter für Windows Server 2019 und 2022
             data = [version for version in data if version['cycle'] in ['2019', '2022']]
         
         return jsonify(data)
     except requests.exceptions.RequestException as e:
+        logger.error(f"Error fetching EOL data for {system}: {str(e)}")
         return jsonify({"error": f"Failed to fetch {system} EOL data: {str(e)}"}), 500
+
+@app.route('/api/software_versions', methods=['GET'])
+def get_software_versions():
+    software_versions = cache.get('software_versions')
+    if software_versions is None:
+        software_versions = []
+    return jsonify(software_versions)
+
+@app.route('/api/software_versions', methods=['POST'])
+def add_software_version():
+    new_software = request.json
+    software_versions = cache.get('software_versions')
+    if software_versions is None:
+        software_versions = []
+    software_versions.append(new_software)
+    cache.set('software_versions', software_versions)
+    return jsonify({"message": "Software added successfully"}), 201
+
+@app.route('/api/software_versions/<int:index>', methods=['PUT'])
+def update_software_version(index):
+    updated_software = request.json
+    software_versions = cache.get('software_versions')
+    if software_versions is None or index >= len(software_versions):
+        return jsonify({"error": "Software not found"}), 404
+    software_versions[index] = updated_software
+    cache.set('software_versions', software_versions)
+    return jsonify({"message": "Software updated successfully"})
+
+@app.route('/api/software_versions/<int:index>', methods=['DELETE'])
+def delete_software_version(index):
+    software_versions = cache.get('software_versions')
+    if software_versions is None or index >= len(software_versions):
+        return jsonify({"error": "Software not found"}), 404
+    del software_versions[index]
+    cache.set('software_versions', software_versions)
+    return jsonify({"message": "Software deleted successfully"})        
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -91,4 +147,4 @@ def serve(path):
         return send_from_directory('public', 'index.html')
 
 if __name__ == '__main__':
-    app.run(host='localhost', debug=True, port=8000)
+    app.run(debug=False)

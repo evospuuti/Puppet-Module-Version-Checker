@@ -3,66 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Software Versions Tracking</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
+    <title>Software Versions Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                },
+            },
         }
-        h1 {
-            color: #333;
+    </script>
+    <style type="text/css">
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --card: 0 0% 100%;
+            --card-foreground: 222.2 84% 4.9%;
+            --popover: 0 0% 100%;
+            --popover-foreground: 222.2 84% 4.9%;
+            --primary: 222.2 47.4% 11.2%;
+            --primary-foreground: 210 40% 98%;
+            --secondary: 210 40% 96.1%;
+            --secondary-foreground: 222.2 47.4% 11.2%;
+            --muted: 210 40% 96.1%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+            --accent: 210 40% 96.1%;
+            --accent-foreground: 222.2 47.4% 11.2%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 222.2 84% 4.9%;
+            --radius: 0.5rem;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 12px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
+
+        .dark {
+            --background: 222.2 84% 4.9%;
+            --foreground: 210 40% 98%;
+            --card: 222.2 84% 4.9%;
+            --card-foreground: 210 40% 98%;
+            --popover: 222.2 84% 4.9%;
+            --popover-foreground: 210 40% 98%;
+            --primary: 210 40% 98%;
+            --primary-foreground: 222.2 47.4% 11.2%;
+            --secondary: 217.2 32.6% 17.5%;
+            --secondary-foreground: 210 40% 98%;
+            --muted: 217.2 32.6% 17.5%;
+            --muted-foreground: 215 20.2% 65.1%;
+            --accent: 217.2 32.6% 17.5%;
+            --accent-foreground: 210 40% 98%;
+            --destructive: 0 62.8% 30.6%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 217.2 32.6% 17.5%;
+            --input: 217.2 32.6% 17.5%;
+            --ring: 212.7 26.8% 83.9%;
         }
     </style>
 </head>
-<body>
-    <h1>Software Versions Tracking</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Software</th>
-                <th>Aktuelle Version</th>
-                <th>Letzte Aktualisierung</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Puppet Agent</td>
-                <td>7.24.0</td>
-                <td>2023-07-15</td>
-                <td>Aktuell</td>
-            </tr>
-            <tr>
-                <td>VMware Tools</td>
-                <td>12.1.0</td>
-                <td>2023-06-30</td>
-                <td>Update verfügbar</td>
-            </tr>
-            <tr>
-                <td>LogInsight</td>
-                <td>8.6.2</td>
-                <td>2023-07-01</td>
-                <td>Aktuell</td>
-            </tr>
-        </tbody>
-    </table>
+<body class="bg-background text-foreground min-h-screen font-sans antialiased">
+    <nav class="bg-card shadow-md">
+        <div class="container mx-auto px-6 py-3">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-foreground">
+                    System Tracker
+                </div>
+                <div class="flex space-x-4">
+                    <a href="/" class="text-foreground hover:text-primary">Home</a>
+                    <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
+                    <a href="/software_versions.html" class="text-foreground hover:text-primary">Software Versions</a>
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary">
+                        Dark/Light
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold mb-6">Software Versions Tracker</h1>
+        
+        <div class="mb-6 space-y-2">
+            <input type="text" id="softwareName" placeholder="Software Name" class="px-3 py-2 bg-background text-foreground border border-input rounded-md">
+            <input type="text" id="currentVersion" placeholder="Current Version" class="px-3 py-2 bg-background text-foreground border border-input rounded-md">
+            <input type="date" id="lastUpdated" class="px-3 py-2 bg-background text-foreground border border-input rounded-md">
+            <select id="status" class="px-3 py-2 bg-background text-foreground border border-input rounded-md">
+                <option value="Aktuell">Aktuell</option>
+                <option value="Update verfügbar">Update verfügbar</option>
+                <option value="Veraltet">Veraltet</option>
+            </select>
+            <button onclick="addSoftware()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                Hinzufügen
+            </button>
+        </div>
+
+        <div class="bg-card rounded-lg shadow-md overflow-hidden mb-6">
+            <table id="softwareTable" class="w-full">
+                <thead>
+                    <tr class="bg-muted">
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Software</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Aktuelle Version</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Letzte Aktualisierung</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody id="softwareList"></tbody>
+            </table>
+        </div>
+        
+        <button onclick="loadSoftwareData()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            Daten aktualisieren
+        </button>
+    </div>
+
+    <script src="/software_versions.js"></script>
+    <script>
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+    </script>
 </body>
 </html>
