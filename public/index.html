@@ -3,7 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Puppet Module Version Checker & EOL Tracker</title>
+    <title>System Tracker</title>
+    <meta name="description" content="System Tracker für Puppet Module Versionen, EOL Daten und Software Versionen">
+    <!-- Preconnect to important third-party domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Asynchronously load Tailwind CSS -->
+    <link rel="stylesheet" href="https://cdn.tailwindcss.com" media="print" onload="this.media='all'">
+    
+    <!-- Asynchronously load fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -104,18 +114,22 @@
     </style>
 </head>
 <body class="bg-background text-foreground min-h-screen font-sans antialiased">
-    <nav class="bg-card shadow-md">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
+        Zum Hauptinhalt springen
+    </a>
+    
+    <nav class="bg-card shadow-md" aria-label="Hauptnavigation">
         <div class="container mx-auto px-6 py-3">
             <div class="flex justify-between items-center">
                 <div class="text-xl font-semibold text-foreground">
                     System Tracker
                 </div>
                 <div class="flex space-x-4">
-                    <a href="/" class="text-foreground hover:text-primary">Home</a>
+                    <a href="/" class="text-foreground hover:text-primary" aria-current="page">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
                     <a href="/software_versions.html" class="text-foreground hover:text-primary">Software Versions</a>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary">
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary" aria-label="Dark Mode umschalten">
                         Dark Mode
                     </button>
                 </div>
@@ -123,7 +137,13 @@
         </div>
     </nav>
 
-    <div class="container mx-auto p-6">
+    <main id="main-content" class="container mx-auto p-6">
+        <nav aria-label="Breadcrumb">
+            <ol class="flex space-x-2 text-sm text-muted-foreground">
+                <li><a href="/" class="hover:text-primary">Home</a></li>
+            </ol>
+        </nav>
+        
         <h1 class="text-3xl font-bold mb-6">Willkommen beim System Tracker</h1>
         <p class="mb-4">Dieser Tracker bietet Informationen zu:</p>
         <ul class="list-disc list-inside mb-6">
@@ -131,9 +151,9 @@
             <li>End-of-Life (EOL) Daten für unsere Systeme</li>
             <li>Software Versions</li>
         </ul>        
-    </div>
+    </main>
 
-    <script>
+    <script type="module">
         function toggleDarkMode() {
             const isDarkMode = document.documentElement.classList.toggle('dark');
             localStorage.setItem('darkMode', isDarkMode);
@@ -143,6 +163,7 @@
         function updateButtonText(isDarkMode) {
             const button = document.getElementById('darkModeToggle');
             button.textContent = isDarkMode ? 'Light Mode' : 'Dark Mode';
+            button.setAttribute('aria-label', isDarkMode ? 'Zu Light Mode wechseln' : 'Zu Dark Mode wechseln');
         }
 
         document.addEventListener('DOMContentLoaded', (event) => {
@@ -152,6 +173,9 @@
             }
             updateButtonText(isDarkMode);
         });
+
+        // Expose toggleDarkMode to global scope for the onclick attribute
+        window.toggleDarkMode = toggleDarkMode;
     </script>
 </body>
 </html>
