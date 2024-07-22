@@ -1,5 +1,3 @@
-let softwareData = [];
-
 async function loadSoftwareData() {
     try {
         const response = await fetch('/api/software_versions');
@@ -8,26 +6,6 @@ async function loadSoftwareData() {
     } catch (error) {
         console.error('Error loading software data:', error);
     }
-}
-
-function updateTable() {
-    const tableBody = document.querySelector('#softwareTable tbody');
-    tableBody.innerHTML = '';
-    softwareData.forEach((software, index) => {
-        const row = `
-            <tr class="${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
-                <td class="p-2">${software.name}</td>
-                <td class="p-2">${software.currentVersion}</td>
-                <td class="p-2">${software.lastUpdated}</td>
-                <td class="p-2">${software.status}</td>
-                <td class="p-2">
-                    <button onclick="editSoftware(${index})" class="bg-blue-500 text-white p-1 rounded mr-1">Bearbeiten</button>
-                    <button onclick="deleteSoftware(${index})" class="bg-red-500 text-white p-1 rounded">Löschen</button>
-                </td>
-            </tr>
-        `;
-        tableBody.innerHTML += row;
-    });
 }
 
 async function addSoftware() {
@@ -62,19 +40,6 @@ async function addSoftware() {
         console.error('Error adding software:', error);
         alert('Fehler beim Hinzufügen der Software');
     }
-}
-
-function editSoftware(index) {
-    const software = softwareData[index];
-    document.getElementById('softwareName').value = software.name;
-    document.getElementById('currentVersion').value = software.currentVersion;
-    document.getElementById('lastUpdated').value = software.lastUpdated;
-    document.getElementById('status').value = software.status;
-
-    // Ändern Sie den "Hinzufügen" Button zu "Aktualisieren"
-    const addButton = document.querySelector('button[onclick="addSoftware()"]');
-    addButton.textContent = 'Aktualisieren';
-    addButton.onclick = () => updateSoftware(index);
 }
 
 async function updateSoftware(index) {
@@ -132,18 +97,3 @@ async function deleteSoftware(index) {
         alert('Fehler beim Löschen der Software');
     }
 }
-
-function clearInputs() {
-    document.getElementById('softwareName').value = '';
-    document.getElementById('currentVersion').value = '';
-    document.getElementById('lastUpdated').value = '';
-    document.getElementById('status').value = 'Aktuell';
-}
-
-function resetAddButton() {
-    const addButton = document.querySelector('button[onclick="updateSoftware()"]');
-    addButton.textContent = 'Hinzufügen';
-    addButton.onclick = addSoftware;
-}
-
-document.addEventListener('DOMContentLoaded', loadSoftwareData);
