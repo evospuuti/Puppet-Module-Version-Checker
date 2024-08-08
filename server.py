@@ -1,9 +1,15 @@
 import os
+import ssl
+import OpenSSL
+import requests
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
 from urllib.parse import urlparse
-import requests
+from datetime import datetime, timedelta
+import threading
+import time
+import hashlib
 
 app = Flask(__name__)
 CORS(app)
@@ -25,6 +31,74 @@ if "REDIS_URL" in os.environ:
     })
 
 cache = Cache(app, config=cache_config)
+
+# Pushover configuration
+PUSHOVER_USER_KEY = "ukiu6xsyzf67o17bq2p4ucvs83dx84"
+PUSHOVER_API_TOKEN = "aoz51q2bfsb74dzfn3dc2xmoie8mzo"
+
+def send_pushover_notification(message, title):
+    url = "https://api.pushover.net/1/messages.json"
+    data = {
+        "token": PUSHOVER_API_TOKEN,
+        "user": PUSHOVER_USER_KEY,
+        "message": message,
+        "title": title
+    }
+    response = requests.post(url, data=data)
+    return response.status_code == 200
+
+def generate_pseudonym(url):
+    hash_object = hashlib.md5(url.encode())
+    return hash_object.hexdigest()[:8]
+
+websites = [
+    {
+        'id': generate_pseudonym('https://www.rapunzel.de'),
+        'url': 'https://www.rapunzel.de',
+        'name': 'Kunde A',
+        'status': 'Unknown',
+        'last_checked': 'Never',
+        'cert_expiry': 'Unknown'
+    },
+    {
+        'id': generate_pseudonym('https://www.spherea.de'),
+        'url': 'https://www.spherea.de',
+        'name': 'Kunde B',
+        'status': 'Unknown',
+        'last_checked': 'Never',
+        'cert_expiry': 'Unknown'
+    }
+]
+
+def check_website(site):
+    try:
+        response = requests.get(site['url'], timeout=5)
+        site['status'] = 'Online' if response.status_code == 200 else 'Offline'
+        
+        # Check SSL certificate
+        hostname = urlparse(site['url']).netloc
+        cert = ssl.get_server_certificate((hostname, 443))
+        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
+        expiry_date = datetime.strptime(x509.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
+        site['cert_expiry'] = expiry_date.strftime('%Y-%m-%d %H:%M:%S')
+        
+    except requests.RequestException:
+        site['status'] = 'Offline'
+        if site.get('last_status') != 'Offline':
+            send_pushover_notification(f"Website {site['name']} (ID: {site['id']}) is offline!", "Website Monitoring Alert")
+    
+    site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    site['last_status'] = site['status']
+
+def monitor_websites():
+    while True:
+        for site in websites:
+            check_website(site)
+        time.sleep(60)  # Wait for 1 minute
+
+# Start the monitoring in a separate thread
+monitor_thread = threading.Thread(target=monitor_websites, daemon=True)
+monitor_thread.start()
 
 @app.route('/api/modules', methods=['GET'])
 @cache.cached(timeout=3600)
@@ -58,7 +132,7 @@ def get_modules():
                 'url': f'https://forge.puppet.com/modules/{module.replace("-", "/")}',
                 'deprecated': deprecated
             })
-        except requests.exceptions.RequestException:
+        except requests.RequestException:
             result.append({
                 'name': module,
                 'error': 'Failed to fetch data'
@@ -82,7 +156,7 @@ def get_eol_data(system):
             data = [version for version in data if version['cycle'] in ['2019', '2022']]
         
         return jsonify(data)
-    except requests.exceptions.RequestException:
+    except requests.RequestException:
         return jsonify({"error": f"Failed to fetch {system} EOL data"}), 500
 
 @app.route('/api/software_versions', methods=['GET'])
@@ -119,7 +193,12 @@ def delete_software_version(index):
         return jsonify({"error": "Software not found"}), 404
     del software_versions[index]
     cache.set('software_versions', software_versions)
-    return jsonify({"message": "Software deleted successfully"})        
+    return jsonify({"message": "Software deleted successfully"})
+
+@app.route('/api/check_website', methods=['GET'])
+def get_website_status():
+    safe_websites = [{k: v for k, v in site.items() if k != 'url'} for site in websites]
+    return jsonify(safe_websites)
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
