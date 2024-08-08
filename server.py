@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 from datetime import datetime, timedelta
 import threading
 import time
-import hashlib
 
 app = Flask(__name__)
 CORS(app)
@@ -47,27 +46,9 @@ def send_pushover_notification(message, title):
     response = requests.post(url, data=data)
     return response.status_code == 200
 
-def generate_pseudonym(url):
-    hash_object = hashlib.md5(url.encode())
-    return hash_object.hexdigest()[:8]
-
 websites = [
-    {
-        'id': generate_pseudonym('https://www.rapunzel.de'),
-        'url': 'https://www.rapunzel.de',
-        'name': 'Kunde A',
-        'status': 'Unknown',
-        'last_checked': 'Never',
-        'cert_expiry': 'Unknown'
-    },
-    {
-        'id': generate_pseudonym('https://spherea.de/de/startseite/'),
-        'url': 'https://www.spherea.de',
-        'name': 'Kunde B',
-        'status': 'Unknown',
-        'last_checked': 'Never',
-        'cert_expiry': 'Unknown'
-    }
+    {'url': 'https://www.rapunzel.de', 'status': 'Unknown', 'last_checked': 'Never', 'cert_expiry': 'Unknown'},
+    {'url': 'https://www.spherea.de', 'status': 'Unknown', 'last_checked': 'Never', 'cert_expiry': 'Unknown'}
 ]
 
 def check_website(site):
@@ -85,7 +66,7 @@ def check_website(site):
     except requests.RequestException:
         site['status'] = 'Offline'
         if site.get('last_status') != 'Offline':
-            send_pushover_notification(f"Website {site['name']} (ID: {site['id']}) is offline!", "Website Monitoring Alert")
+            send_pushover_notification(f"Website {site['url']} is offline!", "Website Monitoring Alert")
     
     site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     site['last_status'] = site['status']
@@ -197,8 +178,7 @@ def delete_software_version(index):
 
 @app.route('/api/check_website', methods=['GET'])
 def get_website_status():
-    safe_websites = [{k: v for k, v in site.items() if k != 'url'} for site in websites]
-    return jsonify(safe_websites)
+    return jsonify(websites)
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

@@ -131,8 +131,7 @@
             <table class="w-full">
                 <thead>
                     <tr class="bg-muted">
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Kunde</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
+                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Website</th>
                         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
                         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Last Checked</th>
                         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Certificate Expiry</th>
@@ -189,8 +188,7 @@
                     const statusClass = site.status === 'Online' ? 'text-green-500' : 'text-red-500';
                     
                     row.innerHTML = `
-                        <td class="px-4 py-2 border-t border-muted">${site.name}</td>
-                        <td class="px-4 py-2 border-t border-muted">${site.id}</td>
+                        <td class="px-4 py-2 border-t border-muted">${site.url}</td>
                         <td class="px-4 py-2 border-t border-muted ${statusClass}">${site.status}</td>
                         <td class="px-4 py-2 border-t border-muted">${site.last_checked}</td>
                         <td class="px-4 py-2 border-t border-muted">${site.cert_expiry}</td>
