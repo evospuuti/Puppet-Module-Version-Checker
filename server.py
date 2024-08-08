@@ -61,7 +61,7 @@ websites = [
         'cert_expiry': 'Unknown'
     },
     {
-        'id': generate_pseudonym('https://www.spherea.de'),
+        'id': generate_pseudonym('https://spherea.de/de/startseite/'),
         'url': 'https://www.spherea.de',
         'name': 'Kunde B',
         'status': 'Unknown',
