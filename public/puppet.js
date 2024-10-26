@@ -20,7 +20,7 @@ const serverVersions = {
     'puppetlabs-powershell': '6.0.0',
     'puppetlabs-registry': '5.0.1',
     'puppetlabs-stdlib': '9.6.0',
-    'saz-sudo': '8.0.0',
+    'saz-sudo': '9.0.0',
     'puppet-ca_cert': '3.1.0'
 };
 
