@@ -17,10 +17,10 @@ const serverVersions = {
     'puppetlabs-apt': '10.0.1',
     'puppetlabs-facts': '1.7.0',
     'puppetlabs-inifile': '6.2.0',
-    'puppetlabs-powershell': '6.0.1',
-    'puppetlabs-registry': '5.0.2',
+    'puppetlabs-powershell': '6.0.2',
+    'puppetlabs-registry': '5.0.3',
     'puppetlabs-stdlib': '9.7.0',
-    'saz-sudo': '9.0.0',
+    'saz-sudo': '9.0.1',
     'puppet-ca_cert': '3.1.0'
 };
 
