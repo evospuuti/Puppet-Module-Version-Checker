@@ -13,14 +13,14 @@ const serverVersions = {
     'dsc-auditpolicydsc': '1.4.0-0-9',
     'puppet-alternatives': '6.0.0',
     'puppet-archive': '7.1.0',
-    'puppet-systemd': '8.1.0',
+    'puppet-systemd': '8.2.0',
     'puppetlabs-apt': '10.0.1',
     'puppetlabs-facts': '1.7.0',
     'puppetlabs-inifile': '6.2.0',
     'puppetlabs-powershell': '6.0.2',
     'puppetlabs-registry': '5.0.3',
     'puppetlabs-stdlib': '9.7.0',
-    'saz-sudo': '9.0.1',
+    'saz-sudo': '9.0.2',
     'puppet-ca_cert': '3.1.0'
 };
 
