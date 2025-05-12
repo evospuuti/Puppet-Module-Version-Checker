@@ -3,8 +3,6 @@ import ssl
 import socket
 import OpenSSL
 import requests
-import asyncio
-import aiohttp
 import threading
 import time
 import multiprocessing
@@ -132,53 +130,6 @@ def monitor_websites():
         
         # Warte 60 Sekunden bis zur nächsten Prüfung
         time.sleep(60)
-
-# OPTIMIERUNG 5: Asynchrone Version der Website-Prüfung (für zukünftige Verwendung)
-async def check_website_async(site):
-    """Asynchrone Website-Prüfung mit aiohttp."""
-    try:
-        # Verwende asynchronen HTTP-Client
-        async with aiohttp.ClientSession() as session:
-            start_time = time.time()
-            async with session.get(site['url'], timeout=5) as response:
-                response_time = time.time() - start_time
-                site['status'] = 'Online' if response.status == 200 else 'Offline'
-                site['response_time'] = round(response_time * 1000, 2)  # ms
-        
-        # SSL-Check muss separat erfolgen, da aiohttp keinen direkten Zugriff auf Zertifikate bietet
-        if site['url'].startswith('https://'):
-            hostname = urlparse(site['url']).netloc
-            site['cert_expiry'] = check_ssl_certificate(hostname)
-            
-    except Exception as e:
-        site['status'] = 'Offline'
-        site['error'] = str(e)
-        
-        if site.get('last_status') != 'Offline':
-            send_pushover_notification(f"Website {site['url']} is offline! Error: {str(e)}", "Website Monitoring Alert")
-    
-    site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    site['last_status'] = site['status']
-    return site
-
-async def monitor_websites_async():
-    """Asynchroner Hintergrundprozess zur Überwachung von Websites."""
-    global websites  # Muss zuerst deklariert werden
-    
-    while True:
-        try:
-            tasks = [check_website_async(site) for site in websites]
-            updated_sites = await asyncio.gather(*tasks)
-            
-            # Update globals and cache
-            websites = updated_sites
-            cache.set('website_status', websites, timeout=60)
-            
-            print(f"[{datetime.now()}] Websites checked successfully (async)")
-        except Exception as e:
-            print(f"[{datetime.now()}] Error in async website monitoring: {e}")
-        
-        await asyncio.sleep(60)
 
 # OPTIMIERUNG 6: Gecachter API-Endpunkt mit Fallback
 @app.route('/api/check_website', methods=['GET'])
