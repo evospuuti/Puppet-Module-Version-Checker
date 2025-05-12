@@ -107,7 +107,7 @@ def check_website(site):
 # OPTIMIERUNG 3: Parallelisierte Prüfung aller Websites
 def check_all_websites():
     """Parallelisierte Prüfung aller Websites mit ThreadPoolExecutor."""
-    global websites  # Diese Zeile muss am Anfang der Funktion stehen
+    global websites  # Muss zuerst deklariert werden
     
     with ThreadPoolExecutor(max_workers=min(len(websites), 10)) as executor:
         updated_sites = list(executor.map(check_website, websites))
@@ -134,18 +134,16 @@ def monitor_websites():
         time.sleep(60)
 
 # OPTIMIERUNG 5: Asynchrone Version der Website-Prüfung (für zukünftige Verwendung)
-async def monitor_websites_async():
-    """Asynchroner Hintergrundprozess zur Überwachung von Websites."""
-    global websites  # Diese Zeile muss am Anfang der Funktion stehen
-    
-    while True:
-        try:
-            tasks = [check_website_async(site) for site in websites]
-            updated_sites = await asyncio.gather(*tasks)
-            
-            # Update globals
-            websites = updated_sites
-            cache.set('website_status', websites, timeout=60)
+async def check_website_async(site):
+    """Asynchrone Website-Prüfung mit aiohttp."""
+    try:
+        # Verwende asynchronen HTTP-Client
+        async with aiohttp.ClientSession() as session:
+            start_time = time.time()
+            async with session.get(site['url'], timeout=5) as response:
+                response_time = time.time() - start_time
+                site['status'] = 'Online' if response.status == 200 else 'Offline'
+                site['response_time'] = round(response_time * 1000, 2)  # ms
         
         # SSL-Check muss separat erfolgen, da aiohttp keinen direkten Zugriff auf Zertifikate bietet
         if site['url'].startswith('https://'):
@@ -165,13 +163,14 @@ async def monitor_websites_async():
 
 async def monitor_websites_async():
     """Asynchroner Hintergrundprozess zur Überwachung von Websites."""
+    global websites  # Muss zuerst deklariert werden
+    
     while True:
         try:
             tasks = [check_website_async(site) for site in websites]
             updated_sites = await asyncio.gather(*tasks)
             
             # Update globals and cache
-            global websites
             websites = updated_sites
             cache.set('website_status', websites, timeout=60)
             
@@ -183,7 +182,6 @@ async def monitor_websites_async():
 
 # OPTIMIERUNG 6: Gecachter API-Endpunkt mit Fallback
 @app.route('/api/check_website', methods=['GET'])
-@cache.cached(timeout=30, key_prefix='website_status')
 def get_website_status():
     """Optimierter API-Endpunkt mit Cache und Fallback."""
     # Force-Parameter für sofortige Aktualisierung
