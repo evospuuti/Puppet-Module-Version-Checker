@@ -229,30 +229,6 @@
                     </thead>
                     <tbody id="statusSummary">
                         <!-- Wird per JavaScript gefüllt -->
-                        <tr>
-                            <td class="px-4 py-2 border-t border-muted">Puppet Module</td>
-                            <td class="px-4 py-2 border-t border-muted"><span id="puppetStatus"
-                                    class="text-warning">Updates verfügbar</span></td>
-                            <td class="px-4 py-2 border-t border-muted">2 Module benötigen Updates</td>
-                        </tr>
-                        <tr>
-                            <td class="px-4 py-2 border-t border-muted">EOL Systeme</td>
-                            <td class="px-4 py-2 border-t border-muted"><span id="eolStatus"
-                                    class="text-success">Aktuell</span></td>
-                            <td class="px-4 py-2 border-t border-muted">Alle Systeme im Supportzeitraum</td>
-                        </tr>
-                        <tr>
-                            <td class="px-4 py-2 border-t border-muted">Websites</td>
-                            <td class="px-4 py-2 border-t border-muted"><span id="websiteStatus"
-                                    class="text-success">Alle online</span></td>
-                            <td class="px-4 py-2 border-t border-muted">2/2 Websites erreichbar</td>
-                        </tr>
-                        <tr>
-                            <td class="px-4 py-2 border-t border-muted">SSL Zertifikate</td>
-                            <td class="px-4 py-2 border-t border-muted"><span id="sslStatus"
-                                    class="text-success">Gültig</span></td>
-                            <td class="px-4 py-2 border-t border-muted">Alle Zertifikate sind gültig</td>
-                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -294,12 +270,94 @@
             }
         });
 
+        /**
+         * Lädt die Systemstatus-Daten vom Server und aktualisiert die Anzeige
+         */
         async function updateStatusSummary() {
-            // Hier würde man normalerweise Daten vom Server laden
-            // Für dieses Beispiel verwenden wir Dummy-Daten
+            try {
+                // Lade die Daten vom System-Status-API-Endpunkt
+                const response = await fetch('/api/system_status');
+                
+                if (!response.ok) {
+                    throw new Error('Fehler beim Laden der Systemstatus-Daten');
+                }
 
-            // In einer echten Implementierung würde man die einzelnen Endpunkte aufrufen
-            // und die Daten aggregieren
+                const data = await response.json();
+                
+                // Statusobjekt für Tabelle vorbereiten
+                const statusSummary = document.getElementById('statusSummary');
+                statusSummary.innerHTML = '';
+
+                // Puppet Module Status aktualisieren
+                const puppetRow = createStatusRow(
+                    'Puppet Module', 
+                    data.puppet.status, 
+                    data.puppet.details
+                );
+                statusSummary.appendChild(puppetRow);
+
+                // EOL Systeme Status aktualisieren
+                const eolRow = createStatusRow(
+                    'EOL Systeme', 
+                    data.eol.status, 
+                    data.eol.details
+                );
+                statusSummary.appendChild(eolRow);
+
+                // Websites Status aktualisieren
+                const websiteRow = createStatusRow(
+                    'Websites', 
+                    data.websites.status, 
+                    data.websites.details
+                );
+                statusSummary.appendChild(websiteRow);
+
+                // SSL Zertifikate Status aktualisieren
+                const sslRow = createStatusRow(
+                    'SSL Zertifikate', 
+                    data.ssl.status, 
+                    data.ssl.details
+                );
+                statusSummary.appendChild(sslRow);
+
+                showToast('Systemstatus erfolgreich aktualisiert', 'success');
+            } catch (error) {
+                console.error('Fehler beim Aktualisieren des Systemstatus:', error);
+                showToast('Fehler beim Laden des Systemstatus', 'error');
+            }
+        }
+
+        /**
+         * Erstellt eine Tabellenzeile für den Systemstatus
+         */
+        function createStatusRow(category, status, details) {
+            const row = document.createElement('tr');
+            
+            // CSS-Klasse und Farbe je nach Status bestimmen
+            let statusClass = '';
+            
+            switch (status) {
+                case 'OK':
+                    statusClass = 'text-success';
+                    break;
+                case 'Warnung':
+                    statusClass = 'text-warning';
+                    break;
+                case 'Kritisch':
+                case 'Error':
+                    statusClass = 'text-error';
+                    break;
+                default:
+                    statusClass = 'text-muted-foreground';
+            }
+            
+            row.innerHTML = `
+                <td class="px-4 py-2 border-t border-muted">${category}</td>
+                <td class="px-4 py-2 border-t border-muted"><span id="${category.toLowerCase().replace(' ', '')}Status" class="${statusClass}">${status}</span></td>
+                <td class="px-4 py-2 border-t border-muted">${details}</td>
+            `;
+            
+            return row;
         }
     </script>
 </body>
