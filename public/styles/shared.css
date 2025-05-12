@@ -1,0 +1,277 @@
+/* Gemeinsame Styles für alle Seiten des System Trackers */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    /* Base Colors */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+
+    /* Status Colors */
+    --success-bg: rgba(0, 255, 0, 0.1);
+    --warning-bg: rgba(255, 255, 0, 0.1);
+    --error-bg: rgba(255, 0, 0, 0.1);
+    --success-text: #22c55e;
+    --warning-text: #eab308;
+    --error-text: #ef4444;
+}
+
+.dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    /* Status Colors for Dark Mode */
+    --success-bg: rgba(0, 255, 0, 0.15);
+    --warning-bg: rgba(255, 255, 0, 0.15);
+    --error-bg: rgba(255, 0, 0, 0.15);
+    --success-text: #4ade80;
+    --warning-text: #facc15;
+    --error-text: #f87171;
+}
+
+/* Skip Link for Accessibility */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+.sr-only.focus-visible,
+.sr-only:focus-visible {
+    position: fixed;
+    width: auto;
+    height: auto;
+    padding: 0.5rem 1rem;
+    margin: 0.5rem;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    border-width: 0;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    z-index: 9999;
+    top: 0;
+    left: 0;
+}
+
+/* Status Colors */
+.status-green {
+    background-color: var(--success-bg);
+}
+
+.status-yellow {
+    background-color: var(--warning-bg);
+}
+
+.status-red {
+    background-color: var(--error-bg);
+}
+
+.text-success {
+    color: var(--success-text);
+}
+
+.text-warning {
+    color: var(--warning-text);
+}
+
+.text-error {
+    color: var(--error-text);
+}
+
+/* Loading Spinner */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(var(--foreground), 0.3);
+    border-radius: 50%;
+    border-top-color: hsl(var(--primary));
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Enhanced Focus Styles */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+}
+
+/* Table Zebra Stripes (Optional) */
+.table-striped tbody tr:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.3);
+}
+
+/* Transition Effects */
+.page-transition {
+    transition: opacity 0.2s ease-in-out;
+}
+
+/* Form Elements */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    color: hsl(var(--foreground));
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-primary {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.btn-primary:hover {
+    background-color: hsl(var(--primary) / 0.9);
+}
+
+.btn-secondary {
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+}
+
+.btn-secondary:hover {
+    background-color: hsl(var(--secondary) / 0.9);
+}
+
+.btn-destructive {
+    background-color: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+}
+
+.btn-destructive:hover {
+    background-color: hsl(var(--destructive) / 0.9);
+}
+
+/* Toast Notifications */
+.toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.toast {
+    padding: 1rem;
+    border-radius: var(--radius);
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-width: 250px;
+    max-width: 450px;
+    animation: slideIn 0.3s ease-out forwards;
+}
+
+.toast-success {
+    border-left: 4px solid var(--success-text);
+}
+
+.toast-warning {
+    border-left: 4px solid var(--warning-text);
+}
+
+.toast-error {
+    border-left: 4px solid var(--error-text);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .nav-links {
+        display: none;
+    }
+
+    .nav-mobile {
+        display: flex;
+    }
+}
+
+@media (min-width: 641px) {
+    .nav-mobile {
+        display: none;
+    }
+}

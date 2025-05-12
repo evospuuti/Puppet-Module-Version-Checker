@@ -1,9 +1,18 @@
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Puppet Module Version Checker</title>
+    <title>Puppet Module Tracker - System Tracker</title>
+    <meta name="description" content="Puppet Module Versionsvergleich zwischen Server- und Forge-Versionen">
+
+    <!-- Preconnect to important third-party domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -54,99 +63,297 @@
             },
         }
     </script>
-    <style type="text/css">
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
-        :root {
-            --background: 0 0% 100%;
-            --foreground: 222.2 84% 4.9%;
-            --card: 0 0% 100%;
-            --card-foreground: 222.2 84% 4.9%;
-            --popover: 0 0% 100%;
-            --popover-foreground: 222.2 84% 4.9%;
-            --primary: 222.2 47.4% 11.2%;
-            --primary-foreground: 210 40% 98%;
-            --secondary: 210 40% 96.1%;
-            --secondary-foreground: 222.2 47.4% 11.2%;
-            --muted: 210 40% 96.1%;
-            --muted-foreground: 215.4 16.3% 46.9%;
-            --accent: 210 40% 96.1%;
-            --accent-foreground: 222.2 47.4% 11.2%;
-            --destructive: 0 84.2% 60.2%;
-            --destructive-foreground: 210 40% 98%;
-            --border: 214.3 31.8% 91.4%;
-            --input: 214.3 31.8% 91.4%;
-            --ring: 222.2 84% 4.9%;
-            --radius: 0.5rem;
-        }
 
-        .dark {
-            --background: 222.2 84% 4.9%;
-            --foreground: 210 40% 98%;
-            --card: 222.2 84% 4.9%;
-            --card-foreground: 210 40% 98%;
-            --popover: 222.2 84% 4.9%;
-            --popover-foreground: 210 40% 98%;
-            --primary: 210 40% 98%;
-            --primary-foreground: 222.2 47.4% 11.2%;
-            --secondary: 217.2 32.6% 17.5%;
-            --secondary-foreground: 210 40% 98%;
-            --muted: 217.2 32.6% 17.5%;
-            --muted-foreground: 215 20.2% 65.1%;
-            --accent: 217.2 32.6% 17.5%;
-            --accent-foreground: 210 40% 98%;
-            --destructive: 0 62.8% 30.6%;
-            --destructive-foreground: 210 40% 98%;
-            --border: 217.2 32.6% 17.5%;
-            --input: 217.2 32.6% 17.5%;
-            --ring: 212.7 26.8% 83.9%;
-        }
-    </style>
+    <!-- Gemeinsame Styles -->
+    <link rel="stylesheet" href="/styles/shared.css">
+
+    <!-- Asynchronously load fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
+        media="print" onload="this.media='all'">
 </head>
+
 <body class="bg-background text-foreground min-h-screen font-sans antialiased">
-    <nav class="bg-card shadow-md">
+    <!-- Accessibility skip link -->
+    <a href="#main-content"
+        class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
+        Zum Hauptinhalt springen
+    </a>
+
+    <!-- Navigation bar -->
+    <nav class="bg-card shadow-md sticky top-0 z-10" aria-label="Hauptnavigation">
         <div class="container mx-auto px-6 py-3">
             <div class="flex justify-between items-center">
                 <div class="text-xl font-semibold text-foreground">
                     System Tracker
                 </div>
-                <div class="flex space-x-4">
+
+                <!-- Mobile menu button -->
+                <button id="mobileNavToggle" class="lg:hidden" aria-label="Menü öffnen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </button>
+
+                <!-- Desktop navigation -->
+                <div class="hidden lg:flex nav-links space-x-4">
                     <a href="/" class="text-foreground hover:text-primary">Home</a>
-                    <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
+                    <a href="/puppet.html" class="text-primary font-medium hover:text-primary/80"
+                        aria-current="page">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
                     <a href="/software_versions.html" class="text-foreground hover:text-primary">Software Versions</a>
                     <a href="/monitoring.html" class="text-foreground hover:text-primary">Monitoring</a>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary">
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
+                        aria-label="Dark Mode umschalten">
                         Dark Mode
                     </button>
+                </div>
+            </div>
+
+            <!-- Mobile navigation menu -->
+            <div class="nav-mobile hidden mt-4 lg:hidden">
+                <div class="flex flex-col space-y-2">
+                    <a href="/" class="text-foreground hover:text-primary py-2">Home</a>
+                    <a href="/puppet.html" class="text-primary font-medium hover:text-primary/80 py-2"
+                        aria-current="page">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
+                    <a href="/software_versions.html" class="text-foreground hover:text-primary py-2">Software
+                        Versions</a>
+                    <a href="/monitoring.html" class="text-foreground hover:text-primary py-2">Monitoring</a>
                 </div>
             </div>
         </div>
     </nav>
 
-    <div class="container mx-auto p-6">
-        <h1 class="text-3xl font-bold mb-6">Puppet Module Version Checker</h1>
-        <div class="bg-card rounded-lg shadow-md overflow-hidden mb-6">
-            <table id="moduleTable" class="w-full">
-                <thead>
-                    <tr class="bg-muted">
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Modul</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Server Version</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Forge Version</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Link</th>
-                    </tr>
-                </thead>
-                <tbody id="moduleList"></tbody>
-            </table>
+    <main id="main-content" class="container mx-auto p-6 page-transition">
+        <nav aria-label="Breadcrumb" class="mb-4">
+            <ol class="flex space-x-2 text-sm text-muted-foreground">
+                <li><a href="/" class="hover:text-primary">Home</a></li>
+                <li><span class="mx-2">/</span></li>
+                <li><a href="/puppet.html" class="hover:text-primary">Puppet Module</a></li>
+            </ol>
+        </nav>
+
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <h1 class="text-3xl font-bold">Puppet Module Version Checker</h1>
+            <div class="flex items-center space-x-2">
+                <p id="moduleCounter" class="text-sm text-muted-foreground"></p>
+                <button onclick="fetchModuleData()"
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    Versionen prüfen
+                </button>
+            </div>
         </div>
-        <div id="loadingIndicator" class="text-center hidden">Lade Daten...</div>
-        <div id="errorMessage" class="text-red-500 text-center hidden"></div>
-        <button onclick="fetchModuleData()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-            Versionen prüfen
-        </button>
+
+        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
+            <p class="mb-4">
+                Diese Seite zeigt den Vergleich zwischen den auf dem Server installierten Puppet-Modulen und den
+                neuesten verfügbaren Versionen aus dem Puppet Forge.
+                Die Farbkodierung hilft schnell zu erkennen, welche Module aktualisiert werden sollten:
+            </p>
+            <div class="flex flex-wrap gap-4 mb-4">
+                <div class="flex items-center">
+                    <div class="w-4 h-4 status-green mr-2 rounded"></div>
+                    <span>Aktuell</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-4 h-4 status-yellow mr-2 rounded"></div>
+                    <span>Update verfügbar</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="w-4 h-4 status-red mr-2 rounded"></div>
+                    <span>Deprecated</span>
+                </div>
+            </div>
+
+            <div class="flex items-center my-4">
+                <label for="moduleFilter" class="mr-2 text-sm font-medium">Filter:</label>
+                <input type="text" id="moduleFilter" placeholder="Nach Modulname oder Version filtern..."
+                    class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full max-w-md">
+            </div>
+
+            <div class="bg-card rounded-lg border border-border overflow-x-auto">
+                <table id="moduleTable" class="w-full">
+                    <thead>
+                        <tr class="bg-muted">
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground" data-sort="name">
+                                Modul <span class="sort-indicator"></span>
+                            </th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground" data-sort="serverVersion">
+                                Server Version <span class="sort-indicator"></span>
+                            </th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground" data-sort="forgeVersion">
+                                Forge Version <span class="sort-indicator"></span>
+                            </th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground" data-sort="status">
+                                Status <span class="sort-indicator"></span>
+                            </th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">
+                                Link
+                            </th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">
+                                Aktionen
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="moduleList"></tbody>
+                </table>
+            </div>
+
+            <div id="loadingIndicator" class="flex justify-center items-center py-6 hidden">
+                <div class="spinner"></div>
+            </div>
+
+            <div id="errorMessage" class="text-error text-center hidden py-4"></div>
+
+            <div class="flex justify-between items-center mt-4">
+                <button onclick="fetchModuleData()"
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    Aktualisieren
+                </button>
+
+                <button onclick="exportTableToCSV('moduleTable', 'puppet_modules.csv')"
+                    class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors">
+                    Als CSV exportieren
+                </button>
+            </div>
+        </div>
+
+        <!-- Zusammenfassung -->
+        <div class="bg-card rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Status Zusammenfassung</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-card rounded-lg border border-border p-4">
+                    <h3 class="text-lg font-medium mb-2">Aktuell</h3>
+                    <div class="flex justify-between items-center">
+                        <span class="text-2xl font-bold" id="upToDateCount">-</span>
+                        <span class="text-success text-xl">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </span>
+                    </div>
+                </div>
+                <div class="bg-card rounded-lg border border-border p-4">
+                    <h3 class="text-lg font-medium mb-2">Update verfügbar</h3>
+                    <div class="flex justify-between items-center">
+                        <span class="text-2xl font-bold" id="updateAvailableCount">-</span>
+                        <span class="text-warning text-xl">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </span>
+                    </div>
+                </div>
+                <div class="bg-card rounded-lg border border-border p-4">
+                    <h3 class="text-lg font-medium mb-2">Deprecated</h3>
+                    <div class="flex justify-between items-center">
+                        <span class="text-2xl font-bold" id="deprecatedCount">-</span>
+                        <span class="text-error text-xl">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal für Moduldetails -->
+    <div id="modalContainer" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden"
+        aria-modal="true" role="dialog">
+        <!-- Inhalt wird dynamisch per JavaScript eingefügt -->
     </div>
 
-    <script src="puppet.js"></script>
+    <footer class="bg-card mt-12 py-6 border-t border-muted">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <p class="text-muted-foreground text-sm">© 2025 System Tracker</p>
+                <div class="mt-4 md:mt-0">
+                    <button onclick="toggleDarkMode()" class="text-sm text-muted-foreground hover:text-foreground">
+                        Theme wechseln
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Container für Benachrichtigungen -->
+    <div class="toast-container"></div>
+
+    <!-- Gemeinsame Scripts -->
+    <script src="/scripts/shared.js"></script>
+    <script src="/puppet.js"></script>
+
+    <script>
+        // Funktion zum Exportieren der Tabelle als CSV
+        function exportTableToCSV(tableId, filename) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+
+            const rows = Array.from(table.querySelectorAll('tr'));
+
+            const csvContent = rows.map(row => {
+                const cells = Array.from(row.querySelectorAll('th, td'));
+                return cells.map(cell => {
+                    // Text extrahieren, ohne HTML-Tags
+                    let content = cell.textContent.trim();
+                    // Wenn Anführungszeichen im Text sind, verdoppeln
+                    content = content.replace(/"/g, '""');
+                    // Text in Anführungszeichen einschließen
+                    return `"${content}"`;
+                }).join(',');
+            }).join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', filename);
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('CSV-Export erfolgreich', 'success');
+        }
+
+        // Funktion zum Aktualisieren der Statuszusammenfassung
+        function updateStatusSummary() {
+            if (!moduleData || moduleData.length === 0) return;
+
+            let upToDateCount = 0;
+            let updateAvailableCount = 0;
+            let deprecatedCount = 0;
+
+            moduleData.forEach(module => {
+                const serverVersion = serverVersions[module.name] || 'Unbekannt';
+                const comparison = compareVersions(serverVersion, module.forgeVersion);
+
+                if (module.deprecated) {
+                    deprecatedCount++;
+                } else if (comparison < 0) {
+                    updateAvailableCount++;
+                } else {
+                    upToDateCount++;
+                }
+            });
+
+            document.getElementById('upToDateCount').textContent = upToDateCount;
+            document.getElementById('updateAvailableCount').textContent = updateAvailableCount;
+            document.getElementById('deprecatedCount').textContent = deprecatedCount;
+        }
+
+        // Event listener für das Update der Zusammenfassung nach dem Laden der Daten
+        document.addEventListener('modulesLoaded', updateStatusSummary);
+    </script>
 </body>
+
 </html>

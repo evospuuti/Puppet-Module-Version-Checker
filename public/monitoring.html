@@ -1,9 +1,18 @@
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Website Monitoring</title>
+    <title>Website Monitoring - System Tracker</title>
+    <meta name="description" content="Monitoring für Websites und SSL-Zertifikate">
+
+    <!-- Preconnect to important third-party domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -54,169 +63,448 @@
             },
         }
     </script>
-    <style type="text/css">
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
-        :root {
-            --background: 0 0% 100%;
-            --foreground: 222.2 84% 4.9%;
-            --card: 0 0% 100%;
-            --card-foreground: 222.2 84% 4.9%;
-            --popover: 0 0% 100%;
-            --popover-foreground: 222.2 84% 4.9%;
-            --primary: 222.2 47.4% 11.2%;
-            --primary-foreground: 210 40% 98%;
-            --secondary: 210 40% 96.1%;
-            --secondary-foreground: 222.2 47.4% 11.2%;
-            --muted: 210 40% 96.1%;
-            --muted-foreground: 215.4 16.3% 46.9%;
-            --accent: 210 40% 96.1%;
-            --accent-foreground: 222.2 47.4% 11.2%;
-            --destructive: 0 84.2% 60.2%;
-            --destructive-foreground: 210 40% 98%;
-            --border: 214.3 31.8% 91.4%;
-            --input: 214.3 31.8% 91.4%;
-            --ring: 222.2 84% 4.9%;
-            --radius: 0.5rem;
-        }
-    
-        .dark {
-            --background: 222.2 84% 4.9%;
-            --foreground: 210 40% 98%;
-            --card: 222.2 84% 4.9%;
-            --card-foreground: 210 40% 98%;
-            --popover: 222.2 84% 4.9%;
-            --popover-foreground: 210 40% 98%;
-            --primary: 210 40% 98%;
-            --primary-foreground: 222.2 47.4% 11.2%;
-            --secondary: 217.2 32.6% 17.5%;
-            --secondary-foreground: 210 40% 98%;
-            --muted: 217.2 32.6% 17.5%;
-            --muted-foreground: 215 20.2% 65.1%;
-            --accent: 217.2 32.6% 17.5%;
-            --accent-foreground: 210 40% 98%;
-            --destructive: 0 62.8% 30.6%;
-            --destructive-foreground: 210 40% 98%;
-            --border: 217.2 32.6% 17.5%;
-            --input: 217.2 32.6% 17.5%;
-            --ring: 212.7 26.8% 83.9%;
-        }
-    </style>
+
+    <!-- Gemeinsame Styles -->
+    <link rel="stylesheet" href="/styles/shared.css">
+
+    <!-- Asynchronously load fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
+        media="print" onload="this.media='all'">
 </head>
+
 <body class="bg-background text-foreground min-h-screen font-sans antialiased">
-    <nav class="bg-card shadow-md">
+    <!-- Accessibility skip link -->
+    <a href="#main-content"
+        class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
+        Zum Hauptinhalt springen
+    </a>
+
+    <!-- Navigation bar -->
+    <nav class="bg-card shadow-md sticky top-0 z-10" aria-label="Hauptnavigation">
         <div class="container mx-auto px-6 py-3">
             <div class="flex justify-between items-center">
                 <div class="text-xl font-semibold text-foreground">
                     System Tracker
                 </div>
-                <div class="flex space-x-4">
+
+                <!-- Mobile menu button -->
+                <button id="mobileNavToggle" class="lg:hidden" aria-label="Menü öffnen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </button>
+
+                <!-- Desktop navigation -->
+                <div class="hidden lg:flex nav-links space-x-4">
                     <a href="/" class="text-foreground hover:text-primary">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
                     <a href="/software_versions.html" class="text-foreground hover:text-primary">Software Versions</a>
-                    <a href="/monitoring.html" class="text-foreground hover:text-primary" aria-current="page">Monitoring</a>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary">
+                    <a href="/monitoring.html" class="text-primary font-medium hover:text-primary/80"
+                        aria-current="page">Monitoring</a>
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
+                        aria-label="Dark Mode umschalten">
                         Dark Mode
                     </button>
+                </div>
+            </div>
+
+            <!-- Mobile navigation menu -->
+            <div class="nav-mobile hidden mt-4 lg:hidden">
+                <div class="flex flex-col space-y-2">
+                    <a href="/" class="text-foreground hover:text-primary py-2">Home</a>
+                    <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
+                    <a href="/software_versions.html" class="text-foreground hover:text-primary py-2">Software
+                        Versions</a>
+                    <a href="/monitoring.html" class="text-primary font-medium hover:text-primary/80 py-2"
+                        aria-current="page">Monitoring</a>
                 </div>
             </div>
         </div>
     </nav>
 
-    <div class="container mx-auto p-6">
-        <h1 class="text-3xl font-bold mb-6">Website Monitoring</h1>
-        
-        <div class="bg-card rounded-lg shadow-md overflow-hidden mb-6">
-            <table class="w-full">
-                <thead>
-                    <tr class="bg-muted">
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Website</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Last Checked</th>
-                        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Certificate Expiry</th>
-                    </tr>
-                </thead>
-                <tbody id="monitoringList">
-                    <!-- Data will be inserted here by JavaScript -->
-                </tbody>
-            </table>
-        </div>
-        
-        <div id="loadingIndicator" class="text-center hidden">
-            Lade Daten...
-        </div>
-        
-        <div id="errorMessage" class="text-red-500 text-center hidden">
-        </div>
-        
-        <button onclick="checkWebsiteStatus()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-            Status aktualisieren
-        </button>
-    </div>
+    <main id="main-content" class="container mx-auto p-6 page-transition">
+        <nav aria-label="Breadcrumb" class="mb-4">
+            <ol class="flex space-x-2 text-sm text-muted-foreground">
+                <li><a href="/" class="hover:text-primary">Home</a></li>
+                <li><span class="mx-2">/</span></li>
+                <li><a href="/monitoring.html" class="hover:text-primary">Monitoring</a></li>
+            </ol>
+        </nav>
 
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Website Monitoring</h1>
+            <div class="text-sm text-muted-foreground">
+                Letzte Aktualisierung: <span id="lastUpdateTime">Wird geladen...</span>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
+            <p class="mb-4">
+                Diese Seite zeigt den aktuellen Status der überwachten Websites und deren SSL-Zertifikate.
+                Die Prüfungen werden automatisch alle 60 Sekunden durchgeführt.
+            </p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <div class="bg-card rounded-lg border border-border p-4">
+                    <h3 class="text-lg font-medium mb-2">Website Status</h3>
+                    <div id="websiteStatusSummary" class="flex items-center">
+                        <span class="text-success text-xl mr-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </span>
+                        <span>Alle Websites online</span>
+                    </div>
+                </div>
+
+                <div class="bg-card rounded-lg border border-border p-4">
+                    <h3 class="text-lg font-medium mb-2">SSL Zertifikate</h3>
+                    <div id="sslStatusSummary" class="flex items-center">
+                        <span class="text-success text-xl mr-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </span>
+                        <span>Alle Zertifikate gültig</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full table-striped">
+                    <thead>
+                        <tr class="bg-muted">
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Website</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Zuletzt geprüft</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">SSL Ablaufdatum</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Verbleibende Tage</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="monitoringList">
+                        <!-- Data will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="loadingIndicator" class="flex justify-center items-center py-6 hidden">
+                <div class="spinner"></div>
+            </div>
+
+            <div id="errorMessage" class="text-error text-center hidden py-4"></div>
+
+            <div class="flex justify-between items-center mt-4">
+                <button onclick="checkWebsiteStatus()"
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    Status aktualisieren
+                </button>
+
+                <button onclick="exportTableToCSV('monitoringTable', 'website_monitoring.csv')"
+                    class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors">
+                    Als CSV exportieren
+                </button>
+            </div>
+        </div>
+
+        <!-- SSL-Zertifikat Details -->
+        <div class="bg-card rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">SSL-Zertifikat Details</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div id="certificateDetails" class="bg-card rounded-lg border border-border p-4 hidden">
+                    <h3 class="text-lg font-medium mb-2">Zertifikat für <span id="certWebsite">-</span></h3>
+                    <div class="space-y-2">
+                        <div>
+                            <span class="text-sm font-medium text-muted-foreground">Ausgestellt für:</span>
+                            <p id="certSubject">-</p>
+                        </div>
+                        <div>
+                            <span class="text-sm font-medium text-muted-foreground">Ausgestellt von:</span>
+                            <p id="certIssuer">-</p>
+                        </div>
+                        <div>
+                            <span class="text-sm font-medium text-muted-foreground">Gültig von:</span>
+                            <p id="certValidFrom">-</p>
+                        </div>
+                        <div>
+                            <span class="text-sm font-medium text-muted-foreground">Gültig bis:</span>
+                            <p id="certValidTo">-</p>
+                        </div>
+                        <div id="certWarning"
+                            class="bg-yellow-50 dark:bg-yellow-900/30 border-l-4 border-warning p-4 mt-2 hidden">
+                            <h4 class="font-bold">Warnung</h4>
+                            <p id="certWarningText">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="noSslSelected"
+                    class="bg-card rounded-lg border border-border p-4 flex items-center justify-center">
+                    <p class="text-muted-foreground">Klicken Sie auf "Details" bei einer Website, um
+                        Zertifikatsinformationen anzuzeigen.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-card mt-12 py-6 border-t border-muted">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <p class="text-muted-foreground text-sm">© 2025 System Tracker</p>
+                <div class="mt-4 md:mt-0">
+                    <button onclick="toggleDarkMode()" class="text-sm text-muted-foreground hover:text-foreground">
+                        Theme wechseln
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Container für Benachrichtigungen -->
+    <div class="toast-container"></div>
+
+    <!-- Gemeinsame Scripts -->
+    <script src="/scripts/shared.js"></script>
     <script>
-        function toggleDarkMode() {
-            const isDarkMode = document.documentElement.classList.toggle('dark');
-            localStorage.setItem('darkMode', isDarkMode);
-            updateButtonText(isDarkMode);
-        }
-
-        function updateButtonText(isDarkMode) {
-            const button = document.getElementById('darkModeToggle');
-            button.textContent = isDarkMode ? 'Light Mode' : 'Dark Mode';
-        }
-
+        // Website-Monitoring-spezifisches JavaScript
         async function checkWebsiteStatus() {
-            const loadingIndicator = document.getElementById('loadingIndicator');
-            const errorMessage = document.getElementById('errorMessage');
-            loadingIndicator.classList.remove('hidden');
-            errorMessage.classList.add('hidden');
-
             try {
-                const response = await fetch('/api/check_website');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
+                const data = await fetchWithLoading('/api/check_website', {}, 'loadingIndicator', 'errorMessage');
+                updateMonitoringTable(data);
+                updateStatusSummary(data);
 
-                const monitoringList = document.getElementById('monitoringList');
-                monitoringList.innerHTML = '';
+                // Update timestamp
+                document.getElementById('lastUpdateTime').textContent = new Date().toLocaleString('de-DE');
 
-                data.forEach(site => {
-                    const row = document.createElement('tr');
-                    const statusClass = site.status === 'Online' ? 'text-green-500' : 'text-red-500';
-                    
-                    row.innerHTML = `
-                        <td class="px-4 py-2 border-t border-muted">${site.url}</td>
-                        <td class="px-4 py-2 border-t border-muted ${statusClass}">${site.status}</td>
-                        <td class="px-4 py-2 border-t border-muted">${site.last_checked}</td>
-                        <td class="px-4 py-2 border-t border-muted">${site.cert_expiry}</td>
-                    `;
-                    monitoringList.appendChild(row);
-                });
+                // Success notification
+                showToast('Website-Status erfolgreich aktualisiert', 'success');
             } catch (error) {
                 console.error('Error checking website status:', error);
-                errorMessage.textContent = 'Fehler beim Laden der Daten. Bitte versuchen Sie es später erneut.';
-                errorMessage.classList.remove('hidden');
-            } finally {
-                loadingIndicator.classList.add('hidden');
+                // Error is already shown by fetchWithLoading
             }
         }
 
-        // Check status every 60 seconds
-        setInterval(checkWebsiteStatus, 60000);
+        function updateMonitoringTable(sites) {
+            const tableBody = document.getElementById('monitoringList');
+            if (!tableBody) return;
 
-        document.addEventListener('DOMContentLoaded', (event) => {
-            const isDarkMode = localStorage.getItem('darkMode') === 'true';
-            if (isDarkMode) {
-                document.documentElement.classList.add('dark');
+            tableBody.innerHTML = '';
+
+            sites.forEach((site, index) => {
+                const row = document.createElement('tr');
+
+                // Calculate days until certificate expiry
+                let daysRemaining = 'Unbekannt';
+                let statusClass = '';
+
+                if (site.cert_expiry && site.cert_expiry !== 'Unknown') {
+                    const expiryDate = new Date(site.cert_expiry);
+                    const now = new Date();
+                    const diffTime = expiryDate - now;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    daysRemaining = diffDays;
+
+                    if (diffDays <= 0) {
+                        statusClass = 'text-error';
+                    } else if (diffDays <= 30) {
+                        statusClass = 'text-warning';
+                    } else {
+                        statusClass = 'text-success';
+                    }
+                }
+
+                row.innerHTML = `
+                    <td class="px-4 py-2 border-t border-muted">${site.url}</td>
+                    <td class="px-4 py-2 border-t border-muted">
+                        <span class="${site.status === 'Online' ? 'text-success' : 'text-error'}">
+                            ${site.status}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2 border-t border-muted">${formatDate(site.last_checked)}</td>
+                    <td class="px-4 py-2 border-t border-muted">${formatDate(site.cert_expiry)}</td>
+                    <td class="px-4 py-2 border-t border-muted ${statusClass}">${daysRemaining}</td>
+                    <td class="px-4 py-2 border-t border-muted">
+                        <button onclick="showCertificateDetails(${index})" class="px-2 py-1 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                            Details
+                        </button>
+                    </td>
+                `;
+
+                tableBody.appendChild(row);
+            });
+        }
+
+        function updateStatusSummary(sites) {
+            // Update website status summary
+            const websiteStatusSummary = document.getElementById('websiteStatusSummary');
+            const offlineSites = sites.filter(site => site.status !== 'Online');
+
+            if (offlineSites.length === 0) {
+                websiteStatusSummary.innerHTML = `
+                    <span class="text-success text-xl mr-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </span>
+                    <span>Alle Websites online</span>
+                `;
+            } else {
+                websiteStatusSummary.innerHTML = `
+                    <span class="text-error text-xl mr-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </span>
+                    <span>${offlineSites.length} ${offlineSites.length === 1 ? 'Website ist' : 'Websites sind'} offline</span>
+                `;
             }
-            updateButtonText(isDarkMode);
 
+            // Update SSL status summary
+            const sslStatusSummary = document.getElementById('sslStatusSummary');
+            const expiringSoonSites = sites.filter(site => {
+                if (site.cert_expiry && site.cert_expiry !== 'Unknown') {
+                    const expiryDate = new Date(site.cert_expiry);
+                    const now = new Date();
+                    const diffTime = expiryDate - now;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 30;
+                }
+                return false;
+            });
+
+            if (expiringSoonSites.length === 0) {
+                sslStatusSummary.innerHTML = `
+                    <span class="text-success text-xl mr-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </span>
+                    <span>Alle Zertifikate gültig</span>
+                `;
+            } else {
+                sslStatusSummary.innerHTML = `
+                    <span class="text-warning text-xl mr-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </span>
+                    <span>${expiringSoonSites.length} ${expiringSoonSites.length === 1 ? 'Zertifikat läuft' : 'Zertifikate laufen'} in weniger als 30 Tagen ab</span>
+                `;
+            }
+        }
+
+        function showCertificateDetails(siteIndex) {
+            fetchWebsiteData().then(sites => {
+                if (sites.length <= siteIndex) return;
+
+                const site = sites[siteIndex];
+                const certificateDetails = document.getElementById('certificateDetails');
+                const noSslSelected = document.getElementById('noSslSelected');
+
+                if (site.cert_expiry && site.cert_expiry !== 'Unknown') {
+                    // Show certificate details
+                    document.getElementById('certWebsite').textContent = site.url;
+                    document.getElementById('certSubject').textContent = site.url.replace('https://', '');
+                    document.getElementById('certIssuer').textContent = 'Let\'s Encrypt Authority X3'; // Sample data, would come from the API
+                    document.getElementById('certValidFrom').textContent = 'N/A'; // Would come from the API
+                    document.getElementById('certValidTo').textContent = formatDate(site.cert_expiry);
+
+                    // Show warning if certificate expires soon
+                    const expiryDate = new Date(site.cert_expiry);
+                    const now = new Date();
+                    const diffTime = expiryDate - now;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    const certWarning = document.getElementById('certWarning');
+                    const certWarningText = document.getElementById('certWarningText');
+
+                    if (diffDays <= 0) {
+                        certWarning.classList.remove('hidden', 'border-warning');
+                        certWarning.classList.add('border-error');
+                        certWarningText.textContent = `Das Zertifikat ist bereits abgelaufen! Bitte erneuern Sie es umgehend.`;
+                    } else if (diffDays <= 30) {
+                        certWarning.classList.remove('hidden', 'border-error');
+                        certWarning.classList.add('border-warning');
+                        certWarningText.textContent = `Das Zertifikat läuft in ${diffDays} Tagen ab. Bitte planen Sie die Erneuerung.`;
+                    } else {
+                        certWarning.classList.add('hidden');
+                    }
+
+                    certificateDetails.classList.remove('hidden');
+                    noSslSelected.classList.add('hidden');
+                } else {
+                    // No certificate information available
+                    certificateDetails.classList.add('hidden');
+                    noSslSelected.classList.remove('hidden');
+                    noSslSelected.innerHTML = `
+                        <p class="text-muted-foreground">Keine SSL-Zertifikatsinformationen für ${site.url} verfügbar.</p>
+                    `;
+                }
+            });
+        }
+
+        async function fetchWebsiteData() {
+            try {
+                return await fetch('/api/check_website').then(response => response.json());
+            } catch (error) {
+                console.error('Error fetching website data:', error);
+                showToast('Fehler beim Laden der Website-Daten', 'error');
+                return [];
+            }
+        }
+
+        function exportTableToCSV(selector, filename) {
+            const rows = document.querySelectorAll('#monitoringList tr');
+
+            // Create CSV content
+            const csvContent = Array.from(rows).map(row => {
+                return Array.from(row.querySelectorAll('td')).map(cell => {
+                    // Get text content without HTML tags
+                    const text = cell.textContent.trim();
+                    // Escape quotes in the content
+                    return `"${text.replace(/"/g, '""')}"`;
+                }).join(',');
+            }).join('\n');
+
+            // Add header row
+            const headerRow = Array.from(document.querySelectorAll('thead th')).map(th =>
+                `"${th.textContent.trim().replace(/"/g, '""')}"`
+            ).join(',');
+
+            const fullCsvContent = headerRow + '\n' + csvContent;
+
+            // Create download link
+            const blob = new Blob([fullCsvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('CSV-Export erfolgreich', 'success');
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
             // Initial check
             checkWebsiteStatus();
+
+            // Auto refresh every 60 seconds
+            setInterval(checkWebsiteStatus, 60000);
         });
     </script>
 </body>
+
 </html>

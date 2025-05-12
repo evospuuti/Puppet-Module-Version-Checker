@@ -31,9 +31,9 @@ if "REDIS_URL" in os.environ:
 
 cache = Cache(app, config=cache_config)
 
-# Pushover configuration
-PUSHOVER_USER_KEY = "ukiu6xsyzf67o17bq2p4ucvs83dx84"
-PUSHOVER_API_TOKEN = "aoz51q2bfsb74dzfn3dc2xmoie8mzo"
+# Pushover configuration - besser mit Umgebungsvariablen
+PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY", "ukiu6xsyzf67o17bq2p4ucvs83dx84")
+PUSHOVER_API_TOKEN = os.environ.get("PUSHOVER_API_TOKEN", "aoz51q2bfsb74dzfn3dc2xmoie8mzo")
 
 def send_pushover_notification(message, title):
     url = "https://api.pushover.net/1/messages.json"
@@ -80,6 +80,22 @@ def monitor_websites():
 # Start the monitoring in a separate thread
 monitor_thread = threading.Thread(target=monitor_websites, daemon=True)
 monitor_thread.start()
+
+# Neue Routen für CSS und JS
+@app.route('/styles/<path:filename>')
+def serve_styles(filename):
+    return send_from_directory('public/styles', filename)
+
+@app.route('/scripts/<path:filename>')
+def serve_scripts(filename):
+    return send_from_directory('public/scripts', filename)
+
+# Cache-Header für statische Assets
+@app.after_request
+def add_cache_headers(response):
+    if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
+        response.headers['Cache-Control'] = 'public, max-age=86400'  # 1 day
+    return response
 
 @app.route('/api/modules', methods=['GET'])
 @cache.cached(timeout=3600)
@@ -179,6 +195,163 @@ def delete_software_version(index):
 @app.route('/api/check_website', methods=['GET'])
 def get_website_status():
     return jsonify(websites)
+
+# API-Endpunkt für Systemstatus-Zusammenfassung
+@app.route('/api/system_status', methods=['GET'])
+def get_system_status():
+    # Puppet Module Status
+    puppet_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        modules = get_modules().json
+        update_count = 0
+        deprecated_count = 0
+        
+        for module in modules:
+            if module.get('deprecated'):
+                deprecated_count += 1
+            elif 'error' not in module:
+                server_version = {
+                    'dsc-auditpolicydsc': '1.4.0-0-9',
+                    'puppet-alternatives': '6.0.0',
+                    'puppet-archive': '7.1.0',
+                    'puppet-systemd': '8.2.0',
+                    'puppetlabs-apt': '10.0.1',
+                    'puppetlabs-facts': '1.7.0',
+                    'puppetlabs-inifile': '6.2.0',
+                    'puppetlabs-powershell': '6.0.2',
+                    'puppetlabs-registry': '5.0.3',
+                    'puppetlabs-stdlib': '9.7.0',
+                    'saz-sudo': '9.0.2',
+                    'puppet-ca_cert': '3.1.0'
+                }.get(module['name'], 'Unbekannt')
+                
+                if server_version != 'Unbekannt' and module.get('forgeVersion') != server_version:
+                    update_count += 1
+        
+        if deprecated_count > 0:
+            puppet_status = {"status": "Warnung", "details": f"{deprecated_count} Module deprecated"}
+        elif update_count > 0:
+            puppet_status = {"status": "Info", "details": f"{update_count} Updates verfügbar"}
+        else:
+            puppet_status = {"status": "OK", "details": "Alle Module aktuell"}
+    except Exception as e:
+        puppet_status = {"status": "Error", "details": str(e)}
+    
+    # Website Status
+    website_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        online_count = sum(1 for site in websites if site['status'] == 'Online')
+        total_count = len(websites)
+        
+        if online_count == total_count:
+            website_status = {"status": "OK", "details": f"Alle {total_count} Websites online"}
+        elif online_count > 0:
+            website_status = {"status": "Warnung", "details": f"{online_count}/{total_count} Websites online"}
+        else:
+            website_status = {"status": "Kritisch", "details": "Alle Websites offline"}
+    except Exception as e:
+        website_status = {"status": "Error", "details": str(e)}
+    
+    # SSL Status
+    ssl_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        expiry_warning_days = 30
+        expiry_critical_days = 7
+        
+        warning_certs = []
+        critical_certs = []
+        
+        for site in websites:
+            if site.get('cert_expiry') and site['cert_expiry'] != 'Unknown':
+                try:
+                    expiry_date = datetime.strptime(site['cert_expiry'], '%Y-%m-%d %H:%M:%S')
+                    days_until_expiry = (expiry_date - datetime.now()).days
+                    
+                    if days_until_expiry <= expiry_critical_days:
+                        critical_certs.append(site['url'])
+                    elif days_until_expiry <= expiry_warning_days:
+                        warning_certs.append(site['url'])
+                except:
+                    pass
+        
+        if critical_certs:
+            ssl_status = {"status": "Kritisch", "details": f"{len(critical_certs)} Zertifikate laufen in <7 Tagen ab"}
+        elif warning_certs:
+            ssl_status = {"status": "Warnung", "details": f"{len(warning_certs)} Zertifikate laufen in <30 Tagen ab"}
+        else:
+            ssl_status = {"status": "OK", "details": "Alle Zertifikate gültig"}
+    except Exception as e:
+        ssl_status = {"status": "Error", "details": str(e)}
+    
+    # EOL Status
+    eol_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        warning_days = 365  # 1 Jahr Warnung
+        
+        warning_systems = []
+        expired_systems = []
+        
+        # Debian
+        debian_data = get_eol_data('debian').json
+        for version in debian_data:
+            if 'eol' in version and version['eol']:
+                try:
+                    eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
+                    days_until_eol = (eol_date - datetime.now()).days
+                    
+                    if days_until_eol <= 0:
+                        expired_systems.append(f"Debian {version['cycle']}")
+                    elif days_until_eol <= warning_days:
+                        warning_systems.append(f"Debian {version['cycle']}")
+                except:
+                    pass
+        
+        # SLES
+        sles_data = get_eol_data('sles').json
+        for version in sles_data:
+            if 'eol' in version and version['eol']:
+                try:
+                    eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
+                    days_until_eol = (eol_date - datetime.now()).days
+                    
+                    if days_until_eol <= 0:
+                        expired_systems.append(f"SLES {version['cycle']}")
+                    elif days_until_eol <= warning_days:
+                        warning_systems.append(f"SLES {version['cycle']}")
+                except:
+                    pass
+        
+        # Windows Server
+        windows_data = get_eol_data('windows-server').json
+        for version in windows_data:
+            if 'eol' in version and version['eol'] and version['cycle'] in ['2019', '2022']:
+                try:
+                    eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
+                    days_until_eol = (eol_date - datetime.now()).days
+                    
+                    if days_until_eol <= 0:
+                        expired_systems.append(f"Windows Server {version['cycle']}")
+                    elif days_until_eol <= warning_days:
+                        warning_systems.append(f"Windows Server {version['cycle']}")
+                except:
+                    pass
+        
+        if expired_systems:
+            eol_status = {"status": "Kritisch", "details": f"{len(expired_systems)} Systeme EOL erreicht"}
+        elif warning_systems:
+            eol_status = {"status": "Warnung", "details": f"{len(warning_systems)} Systeme nahe EOL"}
+        else:
+            eol_status = {"status": "OK", "details": "Alle Systeme im Support"}
+    except Exception as e:
+        eol_status = {"status": "Error", "details": str(e)}
+    
+    return jsonify({
+        "puppet": puppet_status,
+        "websites": website_status,
+        "ssl": ssl_status,
+        "eol": eol_status,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

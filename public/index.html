@@ -1,19 +1,18 @@
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Tracker</title>
     <meta name="description" content="System Tracker für Puppet Module Versionen, EOL Daten und Software Versionen">
+
     <!-- Preconnect to important third-party domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
-    <!-- Asynchronously load Tailwind CSS -->
-    <link rel="stylesheet" href="https://cdn.tailwindcss.com" media="print" onload="this.media='all'">
-    
-    <!-- Asynchronously load fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -64,129 +63,245 @@
             },
         }
     </script>
-    <style type="text/css">
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        
-        :root {
-            --background: 0 0% 100%;
-            --foreground: 222.2 84% 4.9%;
-            --card: 0 0% 100%;
-            --card-foreground: 222.2 84% 4.9%;
-            --popover: 0 0% 100%;
-            --popover-foreground: 222.2 84% 4.9%;
-            --primary: 222.2 47.4% 11.2%;
-            --primary-foreground: 210 40% 98%;
-            --secondary: 210 40% 96.1%;
-            --secondary-foreground: 222.2 47.4% 11.2%;
-            --muted: 210 40% 96.1%;
-            --muted-foreground: 215.4 16.3% 46.9%;
-            --accent: 210 40% 96.1%;
-            --accent-foreground: 222.2 47.4% 11.2%;
-            --destructive: 0 84.2% 60.2%;
-            --destructive-foreground: 210 40% 98%;
-            --border: 214.3 31.8% 91.4%;
-            --input: 214.3 31.8% 91.4%;
-            --ring: 222.2 84% 4.9%;
-            --radius: 0.5rem;
-        }
 
-        .dark {
-            --background: 222.2 84% 4.9%;
-            --foreground: 210 40% 98%;
-            --card: 222.2 84% 4.9%;
-            --card-foreground: 210 40% 98%;
-            --popover: 222.2 84% 4.9%;
-            --popover-foreground: 210 40% 98%;
-            --primary: 210 40% 98%;
-            --primary-foreground: 222.2 47.4% 11.2%;
-            --secondary: 217.2 32.6% 17.5%;
-            --secondary-foreground: 210 40% 98%;
-            --muted: 217.2 32.6% 17.5%;
-            --muted-foreground: 215 20.2% 65.1%;
-            --accent: 217.2 32.6% 17.5%;
-            --accent-foreground: 210 40% 98%;
-            --destructive: 0 62.8% 30.6%;
-            --destructive-foreground: 210 40% 98%;
-            --border: 217.2 32.6% 17.5%;
-            --input: 217.2 32.6% 17.5%;
-            --ring: 212.7 26.8% 83.9%;
-        }
-    </style>
+    <!-- Gemeinsame Styles -->
+    <link rel="stylesheet" href="/styles/shared.css">
+
+    <!-- Asynchronously load fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
+        media="print" onload="this.media='all'">
 </head>
+
 <body class="bg-background text-foreground min-h-screen font-sans antialiased">
-    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
+    <!-- Accessibility skip link -->
+    <a href="#main-content"
+        class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
         Zum Hauptinhalt springen
     </a>
-    
-    <nav class="bg-card shadow-md" aria-label="Hauptnavigation">
+
+    <!-- Navigation bar -->
+    <nav class="bg-card shadow-md sticky top-0 z-10" aria-label="Hauptnavigation">
         <div class="container mx-auto px-6 py-3">
             <div class="flex justify-between items-center">
                 <div class="text-xl font-semibold text-foreground">
                     System Tracker
                 </div>
-                <div class="flex space-x-4">
-                    <a href="/" class="text-foreground hover:text-primary" aria-current="page">Home</a>
+
+                <!-- Mobile menu button -->
+                <button id="mobileNavToggle" class="lg:hidden" aria-label="Menü öffnen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </button>
+
+                <!-- Desktop navigation -->
+                <div class="hidden lg:flex nav-links space-x-4">
+                    <a href="/" class="text-primary font-medium hover:text-primary/80" aria-current="page">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
                     <a href="/software_versions.html" class="text-foreground hover:text-primary">Software Versions</a>
                     <a href="/monitoring.html" class="text-foreground hover:text-primary">Monitoring</a>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary" aria-label="Dark Mode umschalten">
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
+                        aria-label="Dark Mode umschalten">
                         Dark Mode
                     </button>
+                </div>
+            </div>
+
+            <!-- Mobile navigation menu -->
+            <div class="nav-mobile hidden mt-4 lg:hidden">
+                <div class="flex flex-col space-y-2">
+                    <a href="/" class="text-primary font-medium hover:text-primary/80 py-2" aria-current="page">Home</a>
+                    <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
+                    <a href="/software_versions.html" class="text-foreground hover:text-primary py-2">Software
+                        Versions</a>
+                    <a href="/monitoring.html" class="text-foreground hover:text-primary py-2">Monitoring</a>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main id="main-content" class="container mx-auto p-6">
-        <nav aria-label="Breadcrumb">
+    <main id="main-content" class="container mx-auto p-6 page-transition">
+        <nav aria-label="Breadcrumb" class="mb-4">
             <ol class="flex space-x-2 text-sm text-muted-foreground">
                 <li><a href="/" class="hover:text-primary">Home</a></li>
             </ol>
         </nav>
-        
-        <h1 class="text-3xl font-bold mb-6">Willkommen beim System Tracker</h1>
-        <p class="mb-4">Dieser Tracker bietet Informationen zu:</p>
-        <ul class="list-disc list-inside mb-6">
-            <li>Puppet Module Versionen</li>
-            <li>End-of-Life (EOL) Daten für unsere Systeme</li>
-            <li>Software Versions</li>
-            <li>Website Monitoring</li>
-        </ul>
-        
-        <nav>
-            <ul class="space-y-2">
-                <li><a href="/puppet.html" class="text-primary hover:underline">Puppet Module Versionen</a></li>
-                <li><a href="/eol.html" class="text-primary hover:underline">EOL Tracker</a></li>
-                <li><a href="/software_versions.html" class="text-primary hover:underline">Software Versions</a></li>
-                <li><a href="/monitoring.html" class="text-primary hover:underline">Website Monitoring</a></li>
+
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Willkommen beim System Tracker</h1>
+            <div class="text-sm text-muted-foreground">
+                Letztes Update: <span id="lastUpdate">12.05.2025</span>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Überblick</h2>
+            <p class="mb-4">Dieser Tracker bietet Informationen zu verschiedenen Aspekten unserer IT-Infrastruktur:</p>
+            <ul class="list-disc list-inside mb-6 space-y-2">
+                <li>Puppet Module Versionen - Vergleich zwischen installierten und aktuellen Versionen</li>
+                <li>End-of-Life (EOL) Daten für unsere Systeme - Überwachung von Supportzeiträumen</li>
+                <li>Software Versions - Tracking von installierten Softwareversionen</li>
+                <li>Website Monitoring - Überwachung der Erreichbarkeit von Websites und SSL-Zertifikaten</li>
             </ul>
-        </nav>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <!-- Puppet Module Karte -->
+            <div class="bg-card rounded-lg shadow-md overflow-hidden">
+                <div class="p-6">
+                    <h2 class="text-xl font-semibold mb-4">Puppet Module</h2>
+                    <p class="mb-4">Verfolgen Sie den Status Ihrer Puppet Module und vergleichen Sie installierte mit
+                        den neuesten Versionen auf Puppet Forge.</p>
+                    <a href="/puppet.html" class="inline-flex items-center text-primary hover:underline">
+                        Puppet Module Versionen ansehen
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- EOL Tracker Karte -->
+            <div class="bg-card rounded-lg shadow-md overflow-hidden">
+                <div class="p-6">
+                    <h2 class="text-xl font-semibold mb-4">EOL Tracker</h2>
+                    <p class="mb-4">Behalten Sie den Überblick über End-of-Life-Daten von Betriebssystemen wie Debian,
+                        SLES und Windows Server.</p>
+                    <a href="/eol.html" class="inline-flex items-center text-primary hover:underline">
+                        EOL Daten ansehen
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Software Versions Karte -->
+            <div class="bg-card rounded-lg shadow-md overflow-hidden">
+                <div class="p-6">
+                    <h2 class="text-xl font-semibold mb-4">Software Versions</h2>
+                    <p class="mb-4">Verwalten und überwachen Sie Softwareversionen in Ihrer Umgebung und erhalten Sie
+                        Benachrichtigungen bei verfügbaren Updates.</p>
+                    <a href="/software_versions.html" class="inline-flex items-center text-primary hover:underline">
+                        Software Versionen verwalten
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Website Monitoring Karte -->
+            <div class="bg-card rounded-lg shadow-md overflow-hidden">
+                <div class="p-6">
+                    <h2 class="text-xl font-semibold mb-4">Website Monitoring</h2>
+                    <p class="mb-4">Überwachen Sie wichtige Websites auf Verfügbarkeit und prüfen Sie den Status der
+                        SSL-Zertifikate.</p>
+                    <a href="/monitoring.html" class="inline-flex items-center text-primary hover:underline">
+                        Monitoring Status ansehen
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Summary -->
+        <div class="bg-card rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">System Status Zusammenfassung</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-muted">
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Kategorie</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="statusSummary">
+                        <!-- Wird per JavaScript gefüllt -->
+                        <tr>
+                            <td class="px-4 py-2 border-t border-muted">Puppet Module</td>
+                            <td class="px-4 py-2 border-t border-muted"><span id="puppetStatus"
+                                    class="text-warning">Updates verfügbar</span></td>
+                            <td class="px-4 py-2 border-t border-muted">2 Module benötigen Updates</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 border-t border-muted">EOL Systeme</td>
+                            <td class="px-4 py-2 border-t border-muted"><span id="eolStatus"
+                                    class="text-success">Aktuell</span></td>
+                            <td class="px-4 py-2 border-t border-muted">Alle Systeme im Supportzeitraum</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 border-t border-muted">Websites</td>
+                            <td class="px-4 py-2 border-t border-muted"><span id="websiteStatus"
+                                    class="text-success">Alle online</span></td>
+                            <td class="px-4 py-2 border-t border-muted">2/2 Websites erreichbar</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2 border-t border-muted">SSL Zertifikate</td>
+                            <td class="px-4 py-2 border-t border-muted"><span id="sslStatus"
+                                    class="text-success">Gültig</span></td>
+                            <td class="px-4 py-2 border-t border-muted">Alle Zertifikate sind gültig</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
-    <script type="module">
-        function toggleDarkMode() {
-            const isDarkMode = document.documentElement.classList.toggle('dark');
-            localStorage.setItem('darkMode', isDarkMode);
-            updateButtonText(isDarkMode);
-        }
+    <footer class="bg-card mt-12 py-6 border-t border-muted">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <p class="text-muted-foreground text-sm">© 2025 System Tracker</p>
+                <div class="mt-4 md:mt-0">
+                    <button onclick="toggleDarkMode()" class="text-sm text-muted-foreground hover:text-foreground">
+                        Theme wechseln
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
 
-        function updateButtonText(isDarkMode) {
-            const button = document.getElementById('darkModeToggle');
-            button.textContent = isDarkMode ? 'Light Mode' : 'Dark Mode';
-            button.setAttribute('aria-label', isDarkMode ? 'Zu Light Mode wechseln' : 'Zu Dark Mode wechseln');
-        }
+    <!-- Toast Container für Benachrichtigungen -->
+    <div class="toast-container"></div>
 
-        document.addEventListener('DOMContentLoaded', (event) => {
-            const isDarkMode = localStorage.getItem('darkMode') === 'true';
-            if (isDarkMode) {
-                document.documentElement.classList.add('dark');
+    <!-- Gemeinsame Scripts -->
+    <script src="/scripts/shared.js"></script>
+    <script>
+        // Spezifisches Skript für die Homepage
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Aktuelles Datum für "Letztes Update" setzen
+                const now = new Date();
+                document.getElementById('lastUpdate').textContent = now.toLocaleDateString('de-DE');
+
+                // Status-Zusammenfassung laden
+                await updateStatusSummary();
+
+            } catch (error) {
+                console.error('Error loading homepage data:', error);
+                showToast('Fehler beim Laden der Daten', 'error');
             }
-            updateButtonText(isDarkMode);
         });
 
-        // Expose toggleDarkMode to global scope for the onclick attribute
-        window.toggleDarkMode = toggleDarkMode;
+        async function updateStatusSummary() {
+            // Hier würde man normalerweise Daten vom Server laden
+            // Für dieses Beispiel verwenden wir Dummy-Daten
+
+            // In einer echten Implementierung würde man die einzelnen Endpunkte aufrufen
+            // und die Daten aggregieren
+        }
     </script>
 </body>
+
 </html>
