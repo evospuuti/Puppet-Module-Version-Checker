@@ -485,7 +485,3 @@ if __name__ == '__main__':
     # Für Development-Server
     # In Produktion besser gunicorn mit worker_class='gevent' verwenden
     app.run(debug=False, threaded=True)
-        return send_from_directory('public', 'index.html')
-
-if __name__ == '__main__':
-    app.run(debug=False)
