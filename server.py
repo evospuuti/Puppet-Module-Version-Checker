@@ -107,11 +107,12 @@ def check_website(site):
 # OPTIMIERUNG 3: Parallelisierte Prüfung aller Websites
 def check_all_websites():
     """Parallelisierte Prüfung aller Websites mit ThreadPoolExecutor."""
+    global websites  # Diese Zeile muss am Anfang der Funktion stehen
+    
     with ThreadPoolExecutor(max_workers=min(len(websites), 10)) as executor:
         updated_sites = list(executor.map(check_website, websites))
     
     # Atomar aktualisieren und cachen
-    global websites
     websites = updated_sites
     
     # Cache aktualisieren
@@ -133,16 +134,18 @@ def monitor_websites():
         time.sleep(60)
 
 # OPTIMIERUNG 5: Asynchrone Version der Website-Prüfung (für zukünftige Verwendung)
-async def check_website_async(site):
-    """Asynchrone Website-Prüfung mit aiohttp."""
-    try:
-        # Verwende asynchronen HTTP-Client
-        async with aiohttp.ClientSession() as session:
-            start_time = time.time()
-            async with session.get(site['url'], timeout=5) as response:
-                response_time = time.time() - start_time
-                site['status'] = 'Online' if response.status == 200 else 'Offline'
-                site['response_time'] = round(response_time * 1000, 2)  # ms
+async def monitor_websites_async():
+    """Asynchroner Hintergrundprozess zur Überwachung von Websites."""
+    global websites  # Diese Zeile muss am Anfang der Funktion stehen
+    
+    while True:
+        try:
+            tasks = [check_website_async(site) for site in websites]
+            updated_sites = await asyncio.gather(*tasks)
+            
+            # Update globals
+            websites = updated_sites
+            cache.set('website_status', websites, timeout=60)
         
         # SSL-Check muss separat erfolgen, da aiohttp keinen direkten Zugriff auf Zertifikate bietet
         if site['url'].startswith('https://'):
