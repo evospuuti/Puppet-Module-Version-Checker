@@ -1,18 +1,24 @@
 import os
 import ssl
+import socket
 import OpenSSL
 import requests
+import asyncio
+import aiohttp
+import threading
+import time
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
 from urllib.parse import urlparse
-from datetime import datetime, timedelta
-import threading
-import time
 
 app = Flask(__name__)
 CORS(app)
 
+# Verbesserte Cache-Konfiguration
 cache_config = {
     "CACHE_TYPE": "SimpleCache",
     "CACHE_DEFAULT_TIMEOUT": 300
@@ -26,12 +32,13 @@ if "REDIS_URL" in os.environ:
     
     cache_config.update({
         "CACHE_TYPE": "redis",
-        "CACHE_REDIS_URL": redis_url
+        "CACHE_REDIS_URL": redis_url,
+        "CACHE_OPTIONS": {"socket_timeout": 5, "socket_connect_timeout": 5}
     })
 
 cache = Cache(app, config=cache_config)
 
-# Pushover configuration - besser mit Umgebungsvariablen
+# Pushover configuration
 PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY", "ukiu6xsyzf67o17bq2p4ucvs83dx84")
 PUSHOVER_API_TOKEN = os.environ.get("PUSHOVER_API_TOKEN", "aoz51q2bfsb74dzfn3dc2xmoie8mzo")
 
@@ -43,45 +50,159 @@ def send_pushover_notification(message, title):
         "message": message,
         "title": title
     }
-    response = requests.post(url, data=data)
-    return response.status_code == 200
+    try:
+        response = requests.post(url, data=data, timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
+# Websites zu überwachen mit initialem Status
 websites = [
     {'url': 'https://www.spherea.de', 'status': 'Unknown', 'last_checked': 'Never', 'cert_expiry': 'Unknown'},
     {'url': 'https://www.rapunzel.de', 'status': 'Unknown', 'last_checked': 'Never', 'cert_expiry': 'Unknown'}
 ]
 
-def check_website(site):
+# OPTIMIERUNG 1: Effiziente SSL-Zertifikatsprüfung
+def check_ssl_certificate(hostname, port=443, timeout=3.0):
+    """Effizientere Methode zur Prüfung von SSL-Zertifikaten."""
     try:
-        response = requests.get(site['url'], timeout=5)
+        context = ssl.create_default_context()
+        with socket.create_connection((hostname, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                cert = ssock.getpeercert()
+                expiry_date = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y GMT')
+                return expiry_date.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(f"SSL check error for {hostname}: {e}")
+        return 'Unknown'
+
+# OPTIMIERUNG 2: Parallelisierte Websiteprüfung
+def check_website(site):
+    """Optimierte Website-Prüfung mit schnellerem SSL-Check."""
+    try:
+        start_time = time.time()
+        response = requests.get(site['url'], timeout=5, verify=True)
+        response_time = time.time() - start_time
+        
         site['status'] = 'Online' if response.status_code == 200 else 'Offline'
+        site['response_time'] = round(response_time * 1000, 2)  # ms
         
-        # Check SSL certificate
-        hostname = urlparse(site['url']).netloc
-        cert = ssl.get_server_certificate((hostname, 443))
-        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
-        expiry_date = datetime.strptime(x509.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ')
-        site['cert_expiry'] = expiry_date.strftime('%Y-%m-%d %H:%M:%S')
+        # Effizienterer SSL-Check
+        if site['url'].startswith('https://'):
+            hostname = urlparse(site['url']).netloc
+            site['cert_expiry'] = check_ssl_certificate(hostname)
         
-    except requests.RequestException:
+    except requests.RequestException as e:
         site['status'] = 'Offline'
+        site['error'] = str(e)
+        
+        # Benachrichtigung nur bei Statusänderung
         if site.get('last_status') != 'Offline':
-            send_pushover_notification(f"Website {site['url']} is offline!", "Website Monitoring Alert")
+            send_pushover_notification(f"Website {site['url']} is offline! Error: {str(e)}", "Website Monitoring Alert")
     
     site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     site['last_status'] = site['status']
+    return site
 
+# OPTIMIERUNG 3: Parallelisierte Prüfung aller Websites
+def check_all_websites():
+    """Parallelisierte Prüfung aller Websites mit ThreadPoolExecutor."""
+    with ThreadPoolExecutor(max_workers=min(len(websites), 10)) as executor:
+        updated_sites = list(executor.map(check_website, websites))
+    
+    # Atomar aktualisieren und cachen
+    global websites
+    websites = updated_sites
+    
+    # Cache aktualisieren
+    cache.set('website_status', websites, timeout=60)
+    return websites
+
+# OPTIMIERUNG 4: Hintergrund-Thread mit besserer Fehlerbehandlung
 def monitor_websites():
+    """Hintergrundprozess zur Überwachung von Websites mit Fehlerbehandlung."""
     while True:
-        for site in websites:
-            check_website(site)
-        time.sleep(60)  # Wait for 1 minute
+        try:
+            check_all_websites()
+            # Logging
+            print(f"[{datetime.now()}] Websites checked successfully")
+        except Exception as e:
+            print(f"[{datetime.now()}] Error in website monitoring: {e}")
+        
+        # Warte 60 Sekunden bis zur nächsten Prüfung
+        time.sleep(60)
 
-# Start the monitoring in a separate thread
-monitor_thread = threading.Thread(target=monitor_websites, daemon=True)
-monitor_thread.start()
+# OPTIMIERUNG 5: Asynchrone Version der Website-Prüfung (für zukünftige Verwendung)
+async def check_website_async(site):
+    """Asynchrone Website-Prüfung mit aiohttp."""
+    try:
+        # Verwende asynchronen HTTP-Client
+        async with aiohttp.ClientSession() as session:
+            start_time = time.time()
+            async with session.get(site['url'], timeout=5) as response:
+                response_time = time.time() - start_time
+                site['status'] = 'Online' if response.status == 200 else 'Offline'
+                site['response_time'] = round(response_time * 1000, 2)  # ms
+        
+        # SSL-Check muss separat erfolgen, da aiohttp keinen direkten Zugriff auf Zertifikate bietet
+        if site['url'].startswith('https://'):
+            hostname = urlparse(site['url']).netloc
+            site['cert_expiry'] = check_ssl_certificate(hostname)
+            
+    except Exception as e:
+        site['status'] = 'Offline'
+        site['error'] = str(e)
+        
+        if site.get('last_status') != 'Offline':
+            send_pushover_notification(f"Website {site['url']} is offline! Error: {str(e)}", "Website Monitoring Alert")
+    
+    site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    site['last_status'] = site['status']
+    return site
 
-# Neue Routen für CSS und JS
+async def monitor_websites_async():
+    """Asynchroner Hintergrundprozess zur Überwachung von Websites."""
+    while True:
+        try:
+            tasks = [check_website_async(site) for site in websites]
+            updated_sites = await asyncio.gather(*tasks)
+            
+            # Update globals and cache
+            global websites
+            websites = updated_sites
+            cache.set('website_status', websites, timeout=60)
+            
+            print(f"[{datetime.now()}] Websites checked successfully (async)")
+        except Exception as e:
+            print(f"[{datetime.now()}] Error in async website monitoring: {e}")
+        
+        await asyncio.sleep(60)
+
+# OPTIMIERUNG 6: Gecachter API-Endpunkt mit Fallback
+@app.route('/api/check_website', methods=['GET'])
+@cache.cached(timeout=30, key_prefix='website_status')
+def get_website_status():
+    """Optimierter API-Endpunkt mit Cache und Fallback."""
+    # Force-Parameter für sofortige Aktualisierung
+    force_check = request.args.get('force', '').lower() == 'true'
+    
+    # Prüfe, ob ein Cache-Wert existiert
+    cached_data = cache.get('website_status')
+    
+    # Wenn kein Cache oder Force, führe neue Prüfung durch
+    if force_check or not cached_data:
+        try:
+            return jsonify(check_all_websites())
+        except Exception as e:
+            print(f"Error checking websites: {e}")
+            if cached_data:
+                return jsonify(cached_data)  # Fallback auf Cache
+            return jsonify(websites)  # Fallback auf letzte bekannte Werte
+    
+    # Gib Cache zurück
+    return jsonify(cached_data)
+
+# Ergänzende Routen (wie im Original)
 @app.route('/styles/<path:filename>')
 def serve_styles(filename):
     return send_from_directory('public/styles', filename)
@@ -90,7 +211,6 @@ def serve_styles(filename):
 def serve_scripts(filename):
     return send_from_directory('public/scripts', filename)
 
-# Cache-Header für statische Assets
 @app.after_request
 def add_cache_headers(response):
     if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
@@ -191,10 +311,6 @@ def delete_software_version(index):
     del software_versions[index]
     cache.set('software_versions', software_versions)
     return jsonify({"message": "Software deleted successfully"})
-
-@app.route('/api/check_website', methods=['GET'])
-def get_website_status():
-    return jsonify(websites)
 
 # API-Endpunkt für Systemstatus-Zusammenfassung
 @app.route('/api/system_status', methods=['GET'])
@@ -359,6 +475,16 @@ def serve(path):
     if path != "" and os.path.exists(f"public/{path}"):
         return send_from_directory('public', path)
     else:
+        return send_from_directory('public', 'index.html')
+
+if __name__ == '__main__':
+    # Starte den Monitoring-Thread im Hintergrund
+    monitor_thread = threading.Thread(target=monitor_websites, daemon=True)
+    monitor_thread.start()
+    
+    # Für Development-Server
+    # In Produktion besser gunicorn mit worker_class='gevent' verwenden
+    app.run(debug=False, threaded=True)
         return send_from_directory('public', 'index.html')
 
 if __name__ == '__main__':
