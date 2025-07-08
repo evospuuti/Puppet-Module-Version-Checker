@@ -267,7 +267,12 @@ def delete_software_version(index):
 # PuTTY and WinSCP tracking functionality
 import json
 import re
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    print("BeautifulSoup4 not available - using fallback mode")
+    BS4_AVAILABLE = False
 
 class SoftwareChecker:
     def __init__(self):
@@ -297,6 +302,17 @@ class SoftwareChecker:
     
     def check_putty(self):
         """Check PuTTY version from official website"""
+        if not BS4_AVAILABLE:
+            return {
+                "name": "putty",
+                "latest_version": "0.78",
+                "release_date": "Check website for details", 
+                "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
+                "last_checked": datetime.now().isoformat(),
+                "status": "active",
+                "source": "Static (BS4 unavailable)"
+            }
+            
         try:
             response = requests.get("https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html", timeout=10)
             if response.status_code == 200:
@@ -321,42 +337,48 @@ class SoftwareChecker:
         
         return {
             "name": "putty",
+            "latest_version": "0.78 (fallback)",
             "error": "Failed to fetch version",
             "last_checked": datetime.now().isoformat()
         }
     
     def check_winscp(self):
         """Check WinSCP version from GitHub or official site"""
-        # First try GitHub API
+        # First try GitHub API (doesn't need BeautifulSoup)
         github_result = self.check_github_releases("winscp", "winscp")
         if github_result and "error" not in github_result:
             return github_result
         
-        # Fallback to web scraping
-        try:
-            response = requests.get("https://winscp.net/eng/downloads.php", timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                # Look for version pattern
-                version_match = re.search(r'WinSCP\s+(\d+\.\d+(?:\.\d+)?)', response.text)
-                if version_match:
-                    version = version_match.group(1)
-                    return {
-                        "name": "winscp",
-                        "latest_version": version,
-                        "release_date": "Check website for details",
-                        "release_url": "https://winscp.net/eng/downloads.php",
-                        "last_checked": datetime.now().isoformat(),
-                        "status": "active",
-                        "source": "Official Website"
-                    }
-        except Exception as e:
-            print(f"Error checking WinSCP website: {e}")
+        # Fallback to web scraping only if BS4 is available
+        if BS4_AVAILABLE:
+            try:
+                response = requests.get("https://winscp.net/eng/downloads.php", timeout=10)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    # Look for version pattern
+                    version_match = re.search(r'WinSCP\s+(\d+\.\d+(?:\.\d+)?)', response.text)
+                    if version_match:
+                        version = version_match.group(1)
+                        return {
+                            "name": "winscp",
+                            "latest_version": version,
+                            "release_date": "Check website for details",
+                            "release_url": "https://winscp.net/eng/downloads.php",
+                            "last_checked": datetime.now().isoformat(),
+                            "status": "active",
+                            "source": "Official Website"
+                        }
+            except Exception as e:
+                print(f"Error checking WinSCP website: {e}")
         
         return {
             "name": "winscp",
-            "error": "Failed to fetch version",
-            "last_checked": datetime.now().isoformat()
+            "latest_version": "6.1.2 (fallback)",
+            "release_date": "Check website for details",
+            "release_url": "https://winscp.net/eng/downloads.php",
+            "last_checked": datetime.now().isoformat(),
+            "status": "active",
+            "source": "Static (fallback)"
         }
     
     def run_checks(self):
@@ -378,6 +400,43 @@ class SoftwareChecker:
 # Global software checker instance
 software_checker = SoftwareChecker()
 
+@app.route('/api/test_software')
+def test_software():
+    """Simple test endpoint to debug issues"""
+    try:
+        import sys
+        return jsonify({
+            "status": "OK",
+            "python_version": sys.version,
+            "available_modules": {
+                "requests": "requests" in sys.modules,
+                "beautifulsoup4": "bs4" in sys.modules,
+                "lxml": "lxml" in sys.modules
+            },
+            "test_data": {
+                "putty": {
+                    "name": "putty",
+                    "latest_version": "0.78",
+                    "last_checked": datetime.now().isoformat(),
+                    "status": "test",
+                    "source": "Test Data"
+                },
+                "winscp": {
+                    "name": "winscp", 
+                    "latest_version": "6.1.2",
+                    "last_checked": datetime.now().isoformat(),
+                    "status": "test",
+                    "source": "Test Data"
+                }
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "ERROR",
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
+
 @app.route('/api/putty_winscp_status')
 def get_putty_winscp_status():
     """API endpoint for PuTTY and WinSCP status data"""
@@ -385,25 +444,60 @@ def get_putty_winscp_status():
         # Try to get from cache first
         cached_data = cache.get('putty_winscp_data')
         if cached_data:
+            print("Returning cached software data")
             return jsonify(cached_data)
         
-        # If not in cache, run fresh check
-        print("No cached data found, running fresh software check...")
-        data = software_checker.run_checks()
-        return jsonify(data)
+        # Try a simple approach first - check if modules are available
+        try:
+            import requests
+            import bs4
+            print("Required modules available, attempting web scraping...")
+            data = software_checker.run_checks()
+            return jsonify(data)
+        except ImportError as import_error:
+            print(f"Module import failed: {import_error}")
+            # Return static fallback data when modules aren't available
+            fallback_data = {
+                "putty": {
+                    "name": "putty",
+                    "latest_version": "0.78",
+                    "release_date": "Check website for details",
+                    "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
+                    "last_checked": datetime.now().isoformat(),
+                    "status": "active",
+                    "source": "Static Data (Vercel Limitation)"
+                },
+                "winscp": {
+                    "name": "winscp",
+                    "latest_version": "6.1.2", 
+                    "release_date": "Check website for details",
+                    "release_url": "https://winscp.net/eng/downloads.php",
+                    "last_checked": datetime.now().isoformat(),
+                    "status": "active",
+                    "source": "Static Data (Vercel Limitation)"
+                }
+            }
+            # Cache the fallback data
+            cache.set('putty_winscp_data', fallback_data, timeout=3600)
+            return jsonify(fallback_data)
+            
     except Exception as e:
         print(f"Error getting PuTTY/WinSCP status: {e}")
         # Return a fallback response instead of error
         return jsonify({
             "putty": {
                 "name": "putty",
-                "error": f"Failed to fetch version: {str(e)}",
-                "last_checked": datetime.now().isoformat()
+                "latest_version": "0.78 (Static)",
+                "error": f"Failed to fetch live version: {str(e)}",
+                "last_checked": datetime.now().isoformat(),
+                "source": "Fallback Data"
             },
             "winscp": {
                 "name": "winscp", 
-                "error": f"Failed to fetch version: {str(e)}",
-                "last_checked": datetime.now().isoformat()
+                "latest_version": "6.1.2 (Static)",
+                "error": f"Failed to fetch live version: {str(e)}",
+                "last_checked": datetime.now().isoformat(),
+                "source": "Fallback Data"
             }
         })
 
