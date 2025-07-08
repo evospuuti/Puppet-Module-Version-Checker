@@ -27,7 +27,18 @@ let filterValue = '';
 /**
  * Lädt die Moduldaten von der API und aktualisiert die Tabelle
  */
-async function fetchModuleData() {
+async function fetchModuleData(event) {
+    // Button-Referenz erhalten
+    let button = null;
+    let originalText = '';
+    
+    if (event && event.target) {
+        button = event.target;
+        originalText = button.textContent;
+        button.textContent = 'Aktualisiere...';
+        button.disabled = true;
+    }
+    
     try {
         // Daten mit Ladeanimation abrufen
         moduleData = await fetchWithLoading('/api/modules', {}, 'loadingIndicator', 'errorMessage');
@@ -37,9 +48,20 @@ async function fetchModuleData() {
 
         // Custom Event auslösen, um die Statuszusammenfassung zu aktualisieren
         document.dispatchEvent(new CustomEvent('modulesLoaded'));
+        
+        // Erfolgs-Toast nur bei manuellem Refresh
+        if (button) {
+            showToast('Moduldaten erfolgreich aktualisiert', 'success');
+        }
     } catch (error) {
         console.error('Fehler beim Abrufen der Moduldaten:', error);
         // Fehler wird bereits durch fetchWithLoading angezeigt
+    } finally {
+        // Button wiederherstellen
+        if (button) {
+            button.textContent = originalText;
+            button.disabled = false;
+        }
     }
 }
 

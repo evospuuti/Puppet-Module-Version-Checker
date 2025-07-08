@@ -183,7 +183,7 @@
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-4 bg-muted flex justify-between items-center">
                     <h2 class="text-2xl font-bold">Debian</h2>
-                    <button onclick="fetchEolData('debian')"
+                    <button onclick="fetchEolData('debian', event)"
                         class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                         Aktualisieren
                     </button>
@@ -219,7 +219,7 @@
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-4 bg-muted flex justify-between items-center">
                     <h2 class="text-2xl font-bold">SLES</h2>
-                    <button onclick="fetchEolData('sles')"
+                    <button onclick="fetchEolData('sles', event)"
                         class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                         Aktualisieren
                     </button>
@@ -253,7 +253,7 @@
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-4 bg-muted flex justify-between items-center">
                     <h2 class="text-2xl font-bold">Windows Server</h2>
-                    <button onclick="fetchEolData('windows-server')"
+                    <button onclick="fetchEolData('windows-server', event)"
                         class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                         Aktualisieren
                     </button>
@@ -341,7 +341,18 @@
             }
         }
 
-        async function fetchEolData(system) {
+        async function fetchEolData(system, event) {
+            // Button-Referenz erhalten
+            let button = null;
+            let originalText = '';
+            
+            if (event && event.target) {
+                button = event.target;
+                originalText = button.textContent;
+                button.textContent = 'Aktualisiere...';
+                button.disabled = true;
+            }
+            
             // Entsprechende Loading-Indikatoren identifizieren
             const tableId = `${system.replace('-', '')}EolTable`;
             const loadingIndicatorId = `${system.replace('-', '')}LoadingIndicator`;
@@ -443,6 +454,11 @@
                 });
 
 
+                // Erfolgs-Toast nur bei manuellem Refresh
+                if (button) {
+                    showToast(`${system.charAt(0).toUpperCase() + system.slice(1)} Daten erfolgreich aktualisiert`, 'success');
+                }
+                
             } catch (error) {
                 console.error(`Fehler beim Abrufen der ${system} EOL-Daten:`, error);
                 if (errorMessage) {
@@ -452,6 +468,11 @@
                 showToast(`Fehler beim Laden der ${system}-Daten`, 'error');
             } finally {
                 if (loadingIndicator) loadingIndicator.classList.add('hidden');
+                // Button wiederherstellen
+                if (button) {
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }
             }
         }
 
