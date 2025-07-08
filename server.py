@@ -112,7 +112,7 @@ def get_eol_data(system):
         elif system == 'sles':
             data = [version for version in data if version['cycle'] in ['12.5', '15', '15.1', '15.2', '15.3', '15.4', '15.5', '15.6']]
         elif system == 'windows-server':
-            data = [version for version in data if version['cycle'] in ['2019', '2022']]
+            data = [version for version in data if version['cycle'] in ['2019', '2022', '2025']]
         
         return jsonify(data)
     except requests.RequestException:
@@ -519,7 +519,7 @@ def get_system_status():
         # Windows Server
         windows_data = get_eol_data('windows-server').json
         for version in windows_data:
-            if 'eol' in version and version['eol'] and version['cycle'] in ['2019', '2022']:
+            if 'eol' in version and version['eol'] and version['cycle'] in ['2019', '2022', '2025']:
                 try:
                     eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
                     days_until_eol = (eol_date - datetime.now()).days
