@@ -338,13 +338,14 @@ class SoftwareChecker:
         return {
             "name": "filezilla-server",
             "installed_version": installed_version,
-            "latest_version": f"{latest_version} (fallback)",
+            "latest_version": latest_version,
             "update_available": comparison < 0,
             "release_date": "Check website for details",
             "release_url": "https://filezilla-project.org/download.php?type=server",
             "last_checked": datetime.now().isoformat(),
             "status": "active",
-            "source": "Static (fallback)"
+            "source": "Static (fallback)",
+            "error": "Failed to fetch live version"
         }
     
     def check_firefox(self):
@@ -380,13 +381,14 @@ class SoftwareChecker:
         return {
             "name": "firefox",
             "installed_version": installed_version,
-            "latest_version": f"{latest_version} (fallback)",
+            "latest_version": latest_version,
             "update_available": comparison < 0,
             "release_date": "Check website for details",
             "release_url": "https://www.mozilla.org/firefox/new/",
             "last_checked": datetime.now().isoformat(),
             "status": "active",
-            "source": "Static (fallback)"
+            "source": "Static (fallback)",
+            "error": "Failed to fetch live version"
         }
     
     def run_checks(self):
