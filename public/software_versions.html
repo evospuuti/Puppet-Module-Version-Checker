@@ -145,7 +145,7 @@
 
 
         <!-- Software Status Cards -->
-        <div id="softwareContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div id="softwareContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <!-- Loading placeholder -->
             <div class="col-span-full text-center py-8">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -228,8 +228,8 @@
 
             console.log('Displaying software data:', data);
 
-            // Filter nur PuTTY und WinSCP
-            const softwareToShow = ['putty', 'winscp'];
+            // Zeige alle 4 Software-Tools
+            const softwareToShow = ['putty', 'winscp', 'filezilla-server', 'firefox'];
             let cardsAdded = 0;
             
             softwareToShow.forEach(key => {
@@ -266,7 +266,7 @@
             if (software.error && !software.latest_version) {
                 card.innerHTML = `
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xl font-semibold text-foreground">${software.name.toUpperCase()}</h3>
+                        <h3 class="text-xl font-semibold text-foreground">${getDisplayName(software.name)}</h3>
                         <span class="px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
                             Fehler
                         </span>
@@ -292,7 +292,7 @@
 
                 card.innerHTML = `
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xl font-semibold text-foreground">${software.name.toUpperCase()}</h3>
+                        <h3 class="text-xl font-semibold text-foreground">${getDisplayName(software.name)}</h3>
                         <span class="px-3 py-1 ${statusColor} text-sm font-medium rounded-full">
                             ${statusText}
                         </span>
@@ -384,6 +384,16 @@
 
         function updateLastUpdateDisplay() {
             document.getElementById('lastUpdate').textContent = lastUpdateTime.toLocaleString('de-DE');
+        }
+
+        function getDisplayName(softwareName) {
+            const displayNames = {
+                'putty': 'PuTTY',
+                'winscp': 'WinSCP',
+                'filezilla-server': 'FileZilla Server',
+                'firefox': 'Firefox'
+            };
+            return displayNames[softwareName] || softwareName.toUpperCase();
         }
 
         // Auto-refresh every 5 minutes

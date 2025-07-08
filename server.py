@@ -135,7 +135,9 @@ class SoftwareChecker:
         # Installed versions - diese können in CLAUDE.md oder Umgebungsvariablen konfiguriert werden
         self.installed_versions = {
             'putty': os.environ.get('PUTTY_VERSION', '0.83'),
-            'winscp': os.environ.get('WINSCP_VERSION', '6.5')
+            'winscp': os.environ.get('WINSCP_VERSION', '6.5'),
+            'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.9.4'),
+            'firefox': os.environ.get('FIREFOX_VERSION', '128.12.0')
         }
     
     def compare_versions(self, v1, v2):
@@ -287,8 +289,101 @@ class SoftwareChecker:
             "source": "Static (fallback)"
         }
     
+    def check_filezilla_server(self):
+        """Check FileZilla Server version from GitHub"""
+        installed_version = self.installed_versions.get('filezilla-server', 'Unknown')
+        
+        # Try GitHub API first
+        github_result = self.check_github_releases("filezilla-project", "filezilla")
+        if github_result and "error" not in github_result:
+            # Extract server version from release name if possible
+            version = github_result["latest_version"]
+            # FileZilla releases are like "3.66.5" but we need server version
+            # Try alternative approach
+            
+        # Try FileZilla Server download page
+        if BS4_AVAILABLE:
+            try:
+                response = requests.get("https://filezilla-project.org/download.php?type=server", timeout=10)
+                if response.status_code == 200:
+                    # Look for version pattern
+                    version_match = re.search(r'FileZilla Server (\d+\.\d+(?:\.\d+)?)', response.text)
+                    if version_match:
+                        version = version_match.group(1)
+                        comparison = self.compare_versions(installed_version, version)
+                        return {
+                            "name": "filezilla-server",
+                            "installed_version": installed_version,
+                            "latest_version": version,
+                            "update_available": comparison < 0,
+                            "release_date": "Check website for details",
+                            "release_url": "https://filezilla-project.org/download.php?type=server",
+                            "last_checked": datetime.now().isoformat(),
+                            "status": "active",
+                            "source": "Official Website"
+                        }
+            except Exception as e:
+                print(f"Error checking FileZilla Server: {e}")
+        
+        # Fallback
+        latest_version = "1.9.4"
+        comparison = self.compare_versions(installed_version, latest_version)
+        return {
+            "name": "filezilla-server",
+            "installed_version": installed_version,
+            "latest_version": f"{latest_version} (fallback)",
+            "update_available": comparison < 0,
+            "release_date": "Check website for details",
+            "release_url": "https://filezilla-project.org/download.php?type=server",
+            "last_checked": datetime.now().isoformat(),
+            "status": "active",
+            "source": "Static (fallback)"
+        }
+    
+    def check_firefox(self):
+        """Check Firefox version from Mozilla API"""
+        installed_version = self.installed_versions.get('firefox', 'Unknown')
+        
+        try:
+            # Mozilla provides a simple API for latest Firefox version
+            response = requests.get("https://product-details.mozilla.org/1.0/firefox_versions.json", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                # Use LATEST_FIREFOX_VERSION for stable release
+                version = data.get('LATEST_FIREFOX_VERSION', '').replace('esr', '')
+                if version:
+                    comparison = self.compare_versions(installed_version, version)
+                    return {
+                        "name": "firefox",
+                        "installed_version": installed_version,
+                        "latest_version": version,
+                        "update_available": comparison < 0,
+                        "release_date": "Check website for details",
+                        "release_url": "https://www.mozilla.org/firefox/new/",
+                        "last_checked": datetime.now().isoformat(),
+                        "status": "active",
+                        "source": "Mozilla API"
+                    }
+        except Exception as e:
+            print(f"Error checking Firefox: {e}")
+        
+        # Fallback
+        latest_version = "128.0.0"
+        comparison = self.compare_versions(installed_version, latest_version)
+        return {
+            "name": "firefox",
+            "installed_version": installed_version,
+            "latest_version": f"{latest_version} (fallback)",
+            "update_available": comparison < 0,
+            "release_date": "Check website for details",
+            "release_url": "https://www.mozilla.org/firefox/new/",
+            "last_checked": datetime.now().isoformat(),
+            "status": "active",
+            "source": "Static (fallback)"
+        }
+    
     def run_checks(self):
-        """Run software checks for PuTTY and WinSCP"""
+        """Run software checks for all configured software"""
         results = {}
         
         print("Checking PuTTY...")
@@ -296,6 +391,12 @@ class SoftwareChecker:
         
         print("Checking WinSCP...")
         results["winscp"] = self.check_winscp()
+        
+        print("Checking FileZilla Server...")
+        results["filezilla-server"] = self.check_filezilla_server()
+        
+        print("Checking Firefox...")
+        results["firefox"] = self.check_firefox()
         
         # Save results to cache
         cache.set('putty_winscp_data', results, timeout=3600)  # 1 hour cache
