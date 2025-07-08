@@ -101,8 +101,7 @@
                     <a href="/" class="text-primary font-medium hover:text-primary/80" aria-current="page">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
-                    <a href="/software_versions.html" class="text-foreground hover:text-primary">Software Versions</a>
-                    <a href="/monitoring.html" class="text-foreground hover:text-primary">Monitoring</a>
+                    <a href="/software_versions.html" class="text-foreground hover:text-primary">Software</a>
                     <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
                         aria-label="Dark Mode umschalten">
                         Dark Mode
@@ -116,9 +115,7 @@
                     <a href="/" class="text-primary font-medium hover:text-primary/80 py-2" aria-current="page">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
-                    <a href="/software_versions.html" class="text-foreground hover:text-primary py-2">Software
-                        Versions</a>
-                    <a href="/monitoring.html" class="text-foreground hover:text-primary py-2">Monitoring</a>
+                    <a href="/software_versions.html" class="text-foreground hover:text-primary py-2">Software</a>
                 </div>
             </div>
         </div>
@@ -134,7 +131,7 @@
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-3xl font-bold">Willkommen beim System Tracker</h1>
             <div class="text-sm text-muted-foreground">
-                Letztes Update: <span id="lastUpdate">12.05.2025</span>
+                Letztes Update: <span id="lastUpdate">Loading...</span>
             </div>
         </div>
 
@@ -144,12 +141,11 @@
             <ul class="list-disc list-inside mb-6 space-y-2">
                 <li>Puppet Module Versionen - Vergleich zwischen installierten und aktuellen Versionen</li>
                 <li>End-of-Life (EOL) Daten für unsere Systeme - Überwachung von Supportzeiträumen</li>
-                <li>Software Versions - Tracking von installierten Softwareversionen</li>
-                <li>Website Monitoring - Überwachung der Erreichbarkeit von Websites und SSL-Zertifikaten</li>
+                <li>Software Versionen - Überwachung von PuTTY und WinSCP Versionen</li>
             </ul>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <!-- Puppet Module Karte -->
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-6">
@@ -182,30 +178,14 @@
                 </div>
             </div>
 
-            <!-- Software Versions Karte -->
+            <!-- Software Karte -->
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-6">
-                    <h2 class="text-xl font-semibold mb-4">Software Versions</h2>
-                    <p class="mb-4">Verwalten und überwachen Sie Softwareversionen in Ihrer Umgebung und erhalten Sie
-                        Benachrichtigungen bei verfügbaren Updates.</p>
+                    <h2 class="text-xl font-semibold mb-4">Software</h2>
+                    <p class="mb-4">Überwachen Sie Versionen von PuTTY und WinSCP und erhalten Sie aktuelle
+                        Versionsinformationen.</p>
                     <a href="/software_versions.html" class="inline-flex items-center text-primary hover:underline">
-                        Software Versionen verwalten
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Website Monitoring Karte -->
-            <div class="bg-card rounded-lg shadow-md overflow-hidden">
-                <div class="p-6">
-                    <h2 class="text-xl font-semibold mb-4">Website Monitoring</h2>
-                    <p class="mb-4">Überwachen Sie wichtige Websites auf Verfügbarkeit und prüfen Sie den Status der
-                        SSL-Zertifikate.</p>
-                    <a href="/monitoring.html" class="inline-flex items-center text-primary hover:underline">
-                        Monitoring Status ansehen
+                        Software Versionen ansehen
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -304,21 +284,13 @@
                 );
                 statusSummary.appendChild(eolRow);
 
-                // Websites Status aktualisieren
-                const websiteRow = createStatusRow(
-                    'Websites', 
-                    data.websites.status, 
-                    data.websites.details
+                // Software Status aktualisieren
+                const softwareRow = createStatusRow(
+                    'Software', 
+                    data.software.status, 
+                    data.software.details
                 );
-                statusSummary.appendChild(websiteRow);
-
-                // SSL Zertifikate Status aktualisieren
-                const sslRow = createStatusRow(
-                    'SSL Zertifikate', 
-                    data.ssl.status, 
-                    data.ssl.details
-                );
-                statusSummary.appendChild(sslRow);
+                statusSummary.appendChild(softwareRow);
 
                 showToast('Systemstatus erfolgreich aktualisiert', 'success');
             } catch (error) {
@@ -338,14 +310,14 @@
             
             switch (status) {
                 case 'OK':
-                    statusClass = 'text-success';
+                    statusClass = 'text-green-600';
                     break;
                 case 'Warnung':
-                    statusClass = 'text-warning';
+                    statusClass = 'text-yellow-600';
                     break;
                 case 'Kritisch':
                 case 'Error':
-                    statusClass = 'text-error';
+                    statusClass = 'text-red-600';
                     break;
                 default:
                     statusClass = 'text-muted-foreground';

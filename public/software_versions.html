@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Software Versions - System Tracker</title>
-    <meta name="description" content="Tracking von Softwareversionen und Updates">
+    <title>Software - System Tracker</title>
+    <meta name="description" content="Überwachung von Software-Versionen wie PuTTY und WinSCP">
 
     <!-- Preconnect to important third-party domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,9 +101,7 @@
                     <a href="/" class="text-foreground hover:text-primary">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
-                    <a href="/software_versions.html" class="text-primary font-medium hover:text-primary/80"
-                        aria-current="page">Software Versions</a>
-                    <a href="/monitoring.html" class="text-foreground hover:text-primary">Monitoring</a>
+                    <a href="/software_versions.html" class="text-primary font-medium hover:text-primary/80" aria-current="page">Software</a>
                     <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
                         aria-label="Dark Mode umschalten">
                         Dark Mode
@@ -117,9 +115,7 @@
                     <a href="/" class="text-foreground hover:text-primary py-2">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
                     <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
-                    <a href="/software_versions.html" class="text-primary font-medium hover:text-primary/80 py-2"
-                        aria-current="page">Software Versions</a>
-                    <a href="/monitoring.html" class="text-foreground hover:text-primary py-2">Monitoring</a>
+                    <a href="/software_versions.html" class="text-primary font-medium hover:text-primary/80 py-2" aria-current="page">Software</a>
                 </div>
             </div>
         </div>
@@ -129,193 +125,46 @@
         <nav aria-label="Breadcrumb" class="mb-4">
             <ol class="flex space-x-2 text-sm text-muted-foreground">
                 <li><a href="/" class="hover:text-primary">Home</a></li>
-                <li><span class="mx-2">/</span></li>
-                <li><a href="/software_versions.html" class="hover:text-primary">Software Versions</a></li>
+                <li>/</li>
+                <li>Software</li>
             </ol>
         </nav>
 
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold">Software Versions Tracker</h1>
-            <div class="text-sm text-muted-foreground">
-                <span id="softwareCounter">0 Software-Einträge</span>
+            <h1 class="text-3xl font-bold">Software Versionen</h1>
+            <div class="flex items-center space-x-4">
+                <button onclick="refreshSoftwareData()" 
+                        class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                    Aktualisieren
+                </button>
+                <div class="text-sm text-muted-foreground">
+                    Letztes Update: <span id="lastUpdate">Loading...</span>
+                </div>
             </div>
         </div>
 
-        <!-- Software hinzufügen/bearbeiten -->
         <div class="bg-card rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-semibold mb-4">Software hinzufügen oder bearbeiten</h2>
-            <form id="softwareForm" class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="form-group">
-                        <label for="softwareName" class="form-label">Software Name <span
-                                class="text-error">*</span></label>
-                        <input type="text" id="softwareName" placeholder="z.B. Apache, MySQL, etc." required
-                            class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="currentVersion" class="form-label">Aktuelle Version <span
-                                class="text-error">*</span></label>
-                        <input type="text" id="currentVersion" placeholder="z.B. 2.4.56, 8.0.25, etc." required
-                            class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="category" class="form-label">Kategorie</label>
-                        <select id="category"
-                            class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                            <option value="Betriebssystem">Betriebssystem</option>
-                            <option value="Datenbank">Datenbank</option>
-                            <option value="Webserver">Webserver</option>
-                            <option value="Entwicklungstools">Entwicklungstools</option>
-                            <option value="Monitoring">Monitoring</option>
-                            <option value="Sicherheit">Sicherheit</option>
-                            <option value="Sonstiges">Sonstiges</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="lastUpdated" class="form-label">Letzte Aktualisierung <span
-                                class="text-error">*</span></label>
-                        <input type="date" id="lastUpdated" required
-                            class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="status" class="form-label">Status</label>
-                        <select id="status"
-                            class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                            <option value="Aktuell">Aktuell</option>
-                            <option value="Update verfügbar">Update verfügbar</option>
-                            <option value="Veraltet">Veraltet</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="softwareLink" class="form-label">Software Link</label>
-                        <input type="url" id="softwareLink" placeholder="https://..."
-                            class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                    </div>
+            <h2 class="text-xl font-semibold mb-4">Übersicht</h2>
+            <p class="mb-4">Diese Seite zeigt die aktuellen Versionen von wichtigen Software-Tools und deren Status.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <strong>PuTTY:</strong> SSH und Telnet Client für Windows
                 </div>
-
-                <div class="form-group">
-                    <label for="notes" class="form-label">Notizen</label>
-                    <textarea id="notes" rows="3" placeholder="Zusätzliche Informationen, Abhängigkeiten, etc."
-                        class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full"></textarea>
-                </div>
-
-                <div class="flex justify-end space-x-2">
-                    <button type="button" id="cancelButton" onclick="resetForm()"
-                        class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors hidden">
-                        Abbrechen
-                    </button>
-                    <button type="submit" id="submitButton"
-                        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                        Hinzufügen
-                    </button>
-                </div>
-            </form>
-        </div>
-
-        <!-- Filter und Suche -->
-        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
-            <div
-                class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0 md:space-x-4">
-                <div class="w-full md:w-1/3">
-                    <label for="searchInput" class="form-label">Suche</label>
-                    <input type="text" id="searchInput" placeholder="Software suchen..." onkeyup="filterSoftware()"
-                        class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                </div>
-
-                <div class="w-full md:w-1/3">
-                    <label for="categoryFilter" class="form-label">Nach Kategorie filtern</label>
-                    <select id="categoryFilter" onchange="filterSoftware()"
-                        class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                        <option value="">Alle Kategorien</option>
-                        <option value="Betriebssystem">Betriebssystem</option>
-                        <option value="Datenbank">Datenbank</option>
-                        <option value="Webserver">Webserver</option>
-                        <option value="Entwicklungstools">Entwicklungstools</option>
-                        <option value="Monitoring">Monitoring</option>
-                        <option value="Sicherheit">Sicherheit</option>
-                        <option value="Sonstiges">Sonstiges</option>
-                    </select>
-                </div>
-
-                <div class="w-full md:w-1/3">
-                    <label for="statusFilter" class="form-label">Nach Status filtern</label>
-                    <select id="statusFilter" onchange="filterSoftware()"
-                        class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full">
-                        <option value="">Alle Status</option>
-                        <option value="Aktuell">Aktuell</option>
-                        <option value="Update verfügbar">Update verfügbar</option>
-                        <option value="Veraltet">Veraltet</option>
-                    </select>
+                <div>
+                    <strong>WinSCP:</strong> SFTP, FTP und SCP Client für Windows
                 </div>
             </div>
         </div>
 
-        <!-- Software Tabelle -->
-        <div class="bg-card rounded-lg shadow-md overflow-hidden mb-6">
-            <div class="overflow-x-auto">
-                <table id="softwareTable" class="w-full table-striped">
-                    <thead>
-                        <tr class="bg-muted">
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Software</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Version</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Kategorie</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Letzte Aktualisierung</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="softwareList">
-                        <!-- Data will be inserted here by JavaScript -->
-                    </tbody>
-                </table>
+        <!-- Software Status Cards -->
+        <div id="softwareContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Loading placeholder -->
+            <div class="col-span-full text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p class="mt-2 text-muted-foreground">Lade Software-Daten...</p>
             </div>
-
-            <div id="loadingIndicator" class="flex justify-center items-center py-6 hidden">
-                <div class="spinner"></div>
-            </div>
-
-            <div id="errorMessage" class="text-error text-center hidden py-4"></div>
-
-            <div id="emptyState" class="text-center p-8 hidden">
-                <p class="text-muted-foreground">Keine Software-Einträge gefunden. Fügen Sie oben neue Software hinzu.
-                </p>
-            </div>
-        </div>
-
-        <div class="flex justify-between items-center">
-            <button onclick="loadSoftwareData()"
-                class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                Daten aktualisieren
-            </button>
-
-            <button onclick="exportTableToCSV('softwareTable', 'software_versions.csv')"
-                class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors">
-                Als CSV exportieren
-            </button>
         </div>
     </main>
-
-    <!-- Modal für Software Details -->
-    <div id="modalContainer" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden"
-        aria-modal="true" role="dialog">
-        <div class="bg-card rounded-lg shadow-lg max-w-3xl mx-auto w-full">
-            <div class="p-4 bg-muted flex justify-between items-center rounded-t-lg">
-                <h3 class="text-xl font-bold" id="modalTitle">Software Details</h3>
-                <button onclick="closeModal()" class="text-muted-foreground hover:text-foreground"
-                    aria-label="Schließen">
-                    &times;
-                </button>
-            </div>
-            <div class="p-6" id="modalContent">
-                <!-- Content will be inserted here by JavaScript -->
-            </div>
-        </div>
-    </div>
 
     <footer class="bg-card mt-12 py-6 border-t border-muted">
         <div class="container mx-auto px-6">
@@ -335,7 +184,175 @@
 
     <!-- Gemeinsame Scripts -->
     <script src="/scripts/shared.js"></script>
-    <script src="/scripts/software_versions.js"></script>
+    <script>
+        let lastUpdateTime = new Date();
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await loadSoftwareData();
+            } catch (error) {
+                console.error('Error loading software data:', error);
+                showToast('Fehler beim Laden der Software-Daten', 'error');
+            }
+        });
+
+        async function loadSoftwareData() {
+            try {
+                const response = await fetch('/api/putty_winscp_status');
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch software data');
+                }
+
+                const data = await response.json();
+                displaySoftwareData(data);
+                
+                lastUpdateTime = new Date();
+                updateLastUpdateDisplay();
+                
+            } catch (error) {
+                console.error('Error loading software data:', error);
+                document.getElementById('softwareContainer').innerHTML = `
+                    <div class="col-span-full text-center py-8">
+                        <p class="text-red-600">Fehler beim Laden der Software-Daten</p>
+                        <button onclick="loadSoftwareData()" class="mt-4 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90">
+                            Erneut versuchen
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function displaySoftwareData(data) {
+            const container = document.getElementById('softwareContainer');
+            container.innerHTML = '';
+
+            // Filter nur PuTTY und WinSCP
+            const softwareToShow = ['putty', 'winscp'];
+            
+            softwareToShow.forEach(key => {
+                if (data[key]) {
+                    const software = data[key];
+                    const card = createSoftwareCard(software);
+                    container.appendChild(card);
+                }
+            });
+
+            if (container.children.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-8">
+                        <p class="text-muted-foreground">Keine Software-Daten verfügbar</p>
+                    </div>
+                `;
+            }
+        }
+
+        function createSoftwareCard(software) {
+            const card = document.createElement('div');
+            card.className = 'bg-card rounded-lg shadow-md border border-muted p-6';
+
+            if (software.error) {
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-foreground">${software.name.toUpperCase()}</h3>
+                        <span class="px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
+                            Fehler
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        <p class="text-red-600">${software.error}</p>
+                        <p class="text-sm text-muted-foreground">
+                            Letzter Check: ${new Date(software.last_checked).toLocaleString('de-DE')}
+                        </p>
+                    </div>
+                `;
+            } else {
+                const statusColor = software.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+                const statusText = software.status === 'active' ? 'Aktiv' : 'EOL';
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-foreground">${software.name.toUpperCase()}</h3>
+                        <span class="px-3 py-1 ${statusColor} text-sm font-medium rounded-full">
+                            ${statusText}
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-1 gap-3">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Version</p>
+                                <p class="font-medium">${software.latest_version}</p>
+                            </div>
+                            ${software.source ? `
+                                <div>
+                                    <p class="text-sm text-muted-foreground">Quelle</p>
+                                    <p class="font-medium">${software.source}</p>
+                                </div>
+                            ` : ''}
+                            ${software.release_date && software.release_date !== "Check website for details" ? `
+                                <div>
+                                    <p class="text-sm text-muted-foreground">Release-Datum</p>
+                                    <p class="font-medium">${new Date(software.release_date).toLocaleDateString('de-DE')}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="pt-3 border-t border-muted flex justify-between items-center">
+                            <p class="text-sm text-muted-foreground">
+                                Letzter Check: ${new Date(software.last_checked).toLocaleString('de-DE')}
+                            </p>
+                            ${software.release_url ? `
+                                <a href="${software.release_url}" target="_blank" 
+                                   class="text-primary hover:text-primary/80 text-sm font-medium">
+                                    Release ansehen
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            return card;
+        }
+
+        async function refreshSoftwareData() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.textContent = 'Aktualisiere...';
+            button.disabled = true;
+
+            try {
+                const response = await fetch('/api/refresh_putty_winscp', { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to refresh software data');
+                }
+
+                // Wait a bit for the refresh to complete
+                setTimeout(async () => {
+                    await loadSoftwareData();
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    showToast('Software-Daten erfolgreich aktualisiert', 'success');
+                }, 2000);
+
+            } catch (error) {
+                console.error('Error refreshing software data:', error);
+                button.textContent = originalText;
+                button.disabled = false;
+                showToast('Fehler beim Aktualisieren der Software-Daten', 'error');
+            }
+        }
+
+        function updateLastUpdateDisplay() {
+            document.getElementById('lastUpdate').textContent = lastUpdateTime.toLocaleString('de-DE');
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadSoftwareData, 300000);
+        
+        // Update last update display every minute
+        setInterval(updateLastUpdateDisplay, 60000);
+    </script>
 </body>
 
 </html>

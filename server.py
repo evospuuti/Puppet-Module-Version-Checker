@@ -264,6 +264,149 @@ def delete_software_version(index):
     cache.set('software_versions', software_versions)
     return jsonify({"message": "Software deleted successfully"})
 
+# PuTTY and WinSCP tracking functionality
+import json
+import re
+from bs4 import BeautifulSoup
+
+class SoftwareChecker:
+    def __init__(self):
+        self.data_file = "putty_winscp_status.json"
+        
+    def check_github_releases(self, owner, repo):
+        """Check latest release from GitHub"""
+        try:
+            headers = {'Accept': 'application/vnd.github.v3+json'}
+            response = requests.get(f"https://api.github.com/repos/{owner}/{repo}/releases/latest", headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "name": repo,
+                    "latest_version": data.get("tag_name", "Unknown").lstrip("v"),
+                    "release_date": data.get("published_at", "Unknown"),
+                    "release_url": data.get("html_url", ""),
+                    "last_checked": datetime.now().isoformat(),
+                    "status": "active",
+                    "source": "GitHub"
+                }
+        except Exception as e:
+            print(f"Error checking GitHub {owner}/{repo}: {e}")
+        
+        return None
+    
+    def check_putty(self):
+        """Check PuTTY version from official website"""
+        try:
+            response = requests.get("https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html", timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                # Look for version in the title or main heading
+                title = soup.find('title')
+                if title:
+                    version_match = re.search(r'PuTTY.*?(\d+\.\d+)', title.text)
+                    if version_match:
+                        version = version_match.group(1)
+                        return {
+                            "name": "putty",
+                            "latest_version": version,
+                            "release_date": "Check website for details",
+                            "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
+                            "last_checked": datetime.now().isoformat(),
+                            "status": "active",
+                            "source": "Official Website"
+                        }
+        except Exception as e:
+            print(f"Error checking PuTTY: {e}")
+        
+        return {
+            "name": "putty",
+            "error": "Failed to fetch version",
+            "last_checked": datetime.now().isoformat()
+        }
+    
+    def check_winscp(self):
+        """Check WinSCP version from GitHub or official site"""
+        # First try GitHub API
+        github_result = self.check_github_releases("winscp", "winscp")
+        if github_result and "error" not in github_result:
+            return github_result
+        
+        # Fallback to web scraping
+        try:
+            response = requests.get("https://winscp.net/eng/downloads.php", timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                # Look for version pattern
+                version_match = re.search(r'WinSCP\s+(\d+\.\d+(?:\.\d+)?)', response.text)
+                if version_match:
+                    version = version_match.group(1)
+                    return {
+                        "name": "winscp",
+                        "latest_version": version,
+                        "release_date": "Check website for details",
+                        "release_url": "https://winscp.net/eng/downloads.php",
+                        "last_checked": datetime.now().isoformat(),
+                        "status": "active",
+                        "source": "Official Website"
+                    }
+        except Exception as e:
+            print(f"Error checking WinSCP website: {e}")
+        
+        return {
+            "name": "winscp",
+            "error": "Failed to fetch version",
+            "last_checked": datetime.now().isoformat()
+        }
+    
+    def run_checks(self):
+        """Run software checks for PuTTY and WinSCP"""
+        results = {}
+        
+        print("Checking PuTTY...")
+        results["putty"] = self.check_putty()
+        
+        print("Checking WinSCP...")
+        results["winscp"] = self.check_winscp()
+        
+        # Save results to cache
+        cache.set('putty_winscp_data', results, timeout=3600)  # 1 hour cache
+        
+        print(f"Software check completed at {datetime.now()}")
+        return results
+
+# Global software checker instance
+software_checker = SoftwareChecker()
+
+@app.route('/api/putty_winscp_status')
+@cache.cached(timeout=3600)  # Cache for 1 hour
+def get_putty_winscp_status():
+    """API endpoint for PuTTY and WinSCP status data"""
+    try:
+        # Try to get from cache first
+        cached_data = cache.get('putty_winscp_data')
+        if cached_data:
+            return jsonify(cached_data)
+        
+        # If not in cache, run fresh check
+        data = software_checker.run_checks()
+        return jsonify(data)
+    except Exception as e:
+        print(f"Error getting PuTTY/WinSCP status: {e}")
+        return jsonify({"error": "Failed to load software status"}), 500
+
+@app.route('/api/refresh_putty_winscp', methods=['POST'])
+def refresh_putty_winscp():
+    """Manually trigger PuTTY and WinSCP check"""
+    try:
+        # Clear cache and run fresh check
+        cache.delete('putty_winscp_data')
+        data = software_checker.run_checks()
+        return jsonify({"status": "Refresh completed", "data": data})
+    except Exception as e:
+        print(f"Error refreshing PuTTY/WinSCP: {e}")
+        return jsonify({"error": "Failed to refresh software data"}), 500
+
 # API-Endpunkt für Systemstatus-Zusammenfassung
 @app.route('/api/system_status', methods=['GET'])
 def get_system_status():

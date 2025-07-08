@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Software - System Tracker</title>
+    <meta name="description" content="Überwachung von Software-Versionen wie PuTTY und WinSCP">
+
+    <!-- Preconnect to important third-party domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                },
+            },
+        }
+    </script>
+
+    <!-- Gemeinsame Styles -->
+    <link rel="stylesheet" href="/styles/shared.css">
+
+    <!-- Asynchronously load fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
+        media="print" onload="this.media='all'">
+</head>
+
+<body class="bg-background text-foreground min-h-screen font-sans antialiased">
+    <!-- Accessibility skip link -->
+    <a href="#main-content"
+        class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
+        Zum Hauptinhalt springen
+    </a>
+
+    <!-- Navigation bar -->
+    <nav class="bg-card shadow-md sticky top-0 z-10" aria-label="Hauptnavigation">
+        <div class="container mx-auto px-6 py-3">
+            <div class="flex justify-between items-center">
+                <div class="text-xl font-semibold text-foreground">
+                    System Tracker
+                </div>
+
+                <!-- Mobile menu button -->
+                <button id="mobileNavToggle" class="lg:hidden" aria-label="Menü öffnen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </button>
+
+                <!-- Desktop navigation -->
+                <div class="hidden lg:flex nav-links space-x-4">
+                    <a href="/" class="text-foreground hover:text-primary">Home</a>
+                    <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
+                    <a href="/software.html" class="text-primary font-medium hover:text-primary/80" aria-current="page">Software</a>
+                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
+                        aria-label="Dark Mode umschalten">
+                        Dark Mode
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mobile navigation menu -->
+            <div class="nav-mobile hidden mt-4 lg:hidden">
+                <div class="flex flex-col space-y-2">
+                    <a href="/" class="text-foreground hover:text-primary py-2">Home</a>
+                    <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
+                    <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
+                    <a href="/software.html" class="text-primary font-medium hover:text-primary/80 py-2" aria-current="page">Software</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main id="main-content" class="container mx-auto p-6 page-transition">
+        <nav aria-label="Breadcrumb" class="mb-4">
+            <ol class="flex space-x-2 text-sm text-muted-foreground">
+                <li><a href="/" class="hover:text-primary">Home</a></li>
+                <li>/</li>
+                <li>Software</li>
+            </ol>
+        </nav>
+
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Software Versionen</h1>
+            <div class="flex items-center space-x-4">
+                <button onclick="refreshSoftwareData()" 
+                        class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                    Aktualisieren
+                </button>
+                <div class="text-sm text-muted-foreground">
+                    Letztes Update: <span id="lastUpdate">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Übersicht</h2>
+            <p class="mb-4">Diese Seite zeigt die aktuellen Versionen von wichtigen Software-Tools und deren Status.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                    <strong>PuTTY:</strong> SSH und Telnet Client für Windows
+                </div>
+                <div>
+                    <strong>WinSCP:</strong> SFTP, FTP und SCP Client für Windows
+                </div>
+            </div>
+        </div>
+
+        <!-- Software Status Cards -->
+        <div id="softwareContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Loading placeholder -->
+            <div class="col-span-full text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p class="mt-2 text-muted-foreground">Lade Software-Daten...</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-card mt-12 py-6 border-t border-muted">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <p class="text-muted-foreground text-sm">© 2025 System Tracker</p>
+                <div class="mt-4 md:mt-0">
+                    <button onclick="toggleDarkMode()" class="text-sm text-muted-foreground hover:text-foreground">
+                        Theme wechseln
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Container für Benachrichtigungen -->
+    <div class="toast-container"></div>
+
+    <!-- Gemeinsame Scripts -->
+    <script src="/scripts/shared.js"></script>
+    <script>
+        let lastUpdateTime = new Date();
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                await loadSoftwareData();
+            } catch (error) {
+                console.error('Error loading software data:', error);
+                showToast('Fehler beim Laden der Software-Daten', 'error');
+            }
+        });
+
+        async function loadSoftwareData() {
+            try {
+                const response = await fetch('/api/software_status');
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch software data');
+                }
+
+                const data = await response.json();
+                displaySoftwareData(data);
+                
+                lastUpdateTime = new Date();
+                updateLastUpdateDisplay();
+                
+            } catch (error) {
+                console.error('Error loading software data:', error);
+                document.getElementById('softwareContainer').innerHTML = `
+                    <div class="col-span-full text-center py-8">
+                        <p class="text-red-600">Fehler beim Laden der Software-Daten</p>
+                        <button onclick="loadSoftwareData()" class="mt-4 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90">
+                            Erneut versuchen
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        function displaySoftwareData(data) {
+            const container = document.getElementById('softwareContainer');
+            container.innerHTML = '';
+
+            // Filter nur PuTTY und WinSCP
+            const softwareToShow = ['putty', 'winscp'];
+            
+            softwareToShow.forEach(key => {
+                if (data[key]) {
+                    const software = data[key];
+                    const card = createSoftwareCard(software);
+                    container.appendChild(card);
+                }
+            });
+
+            if (container.children.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-8">
+                        <p class="text-muted-foreground">Keine Software-Daten verfügbar</p>
+                    </div>
+                `;
+            }
+        }
+
+        function createSoftwareCard(software) {
+            const card = document.createElement('div');
+            card.className = 'bg-card rounded-lg shadow-md border border-muted p-6';
+
+            if (software.error) {
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-foreground">${software.name.toUpperCase()}</h3>
+                        <span class="px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
+                            Fehler
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        <p class="text-red-600">${software.error}</p>
+                        <p class="text-sm text-muted-foreground">
+                            Letzter Check: ${new Date(software.last_checked).toLocaleString('de-DE')}
+                        </p>
+                    </div>
+                `;
+            } else {
+                const statusColor = software.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
+                const statusText = software.status === 'active' ? 'Aktiv' : 'EOL';
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-semibold text-foreground">${software.name.toUpperCase()}</h3>
+                        <span class="px-3 py-1 ${statusColor} text-sm font-medium rounded-full">
+                            ${statusText}
+                        </span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-1 gap-3">
+                            <div>
+                                <p class="text-sm text-muted-foreground">Version</p>
+                                <p class="font-medium">${software.latest_version}</p>
+                            </div>
+                            ${software.source ? `
+                                <div>
+                                    <p class="text-sm text-muted-foreground">Quelle</p>
+                                    <p class="font-medium">${software.source}</p>
+                                </div>
+                            ` : ''}
+                            ${software.release_date && software.release_date !== "Check website for details" ? `
+                                <div>
+                                    <p class="text-sm text-muted-foreground">Release-Datum</p>
+                                    <p class="font-medium">${new Date(software.release_date).toLocaleDateString('de-DE')}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="pt-3 border-t border-muted flex justify-between items-center">
+                            <p class="text-sm text-muted-foreground">
+                                Letzter Check: ${new Date(software.last_checked).toLocaleString('de-DE')}
+                            </p>
+                            ${software.release_url ? `
+                                <a href="${software.release_url}" target="_blank" 
+                                   class="text-primary hover:text-primary/80 text-sm font-medium">
+                                    Release ansehen
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
+            return card;
+        }
+
+        async function refreshSoftwareData() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.textContent = 'Aktualisiere...';
+            button.disabled = true;
+
+            try {
+                const response = await fetch('/api/refresh_software', { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to refresh software data');
+                }
+
+                // Wait a bit for the refresh to complete
+                setTimeout(async () => {
+                    await loadSoftwareData();
+                    button.textContent = originalText;
+                    button.disabled = false;
+                    showToast('Software-Daten erfolgreich aktualisiert', 'success');
+                }, 2000);
+
+            } catch (error) {
+                console.error('Error refreshing software data:', error);
+                button.textContent = originalText;
+                button.disabled = false;
+                showToast('Fehler beim Aktualisieren der Software-Daten', 'error');
+            }
+        }
+
+        function updateLastUpdateDisplay() {
+            document.getElementById('lastUpdate').textContent = lastUpdateTime.toLocaleString('de-DE');
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadSoftwareData, 300000);
+        
+        // Update last update display every minute
+        setInterval(updateLastUpdateDisplay, 60000);
+    </script>
+</body>
+
+</html>
