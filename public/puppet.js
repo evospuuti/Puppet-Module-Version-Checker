@@ -35,9 +35,6 @@ async function fetchModuleData() {
         // Tabelle aktualisieren
         updateTable();
 
-        // Erfolgsbenachrichtigung anzeigen
-        showToast('Moduldaten erfolgreich aktualisiert', 'success');
-
         // Custom Event auslösen, um die Statuszusammenfassung zu aktualisieren
         document.dispatchEvent(new CustomEvent('modulesLoaded'));
     } catch (error) {
