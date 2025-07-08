@@ -136,7 +136,7 @@ class SoftwareChecker:
         self.installed_versions = {
             'putty': os.environ.get('PUTTY_VERSION', '0.83'),
             'winscp': os.environ.get('WINSCP_VERSION', '6.5'),
-            'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.9.4'),
+            'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.10.3'),
             'firefox': os.environ.get('FIREFOX_VERSION', '128.12.0')
         }
     
@@ -326,7 +326,7 @@ class SoftwareChecker:
                 print(f"Error checking FileZilla Server: {e}")
         
         # Fallback
-        latest_version = "1.9.4"
+        latest_version = "1.10.3"
         comparison = self.compare_versions(installed_version, latest_version)
         return {
             "name": "filezilla-server",
