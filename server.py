@@ -136,7 +136,7 @@ class SoftwareChecker:
         self.installed_versions = {
             'putty': os.environ.get('PUTTY_VERSION', '0.83'),
             'winscp': os.environ.get('WINSCP_VERSION', '6.5'),
-            'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.10.3'),
+            'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.9.4'),
             'firefox': os.environ.get('FIREFOX_VERSION', '128.12.0')
         }
     
@@ -306,22 +306,29 @@ class SoftwareChecker:
             try:
                 response = requests.get("https://filezilla-project.org/download.php?type=server", timeout=10)
                 if response.status_code == 200:
-                    # Look for version pattern
-                    version_match = re.search(r'FileZilla Server (\d+\.\d+(?:\.\d+)?)', response.text)
-                    if version_match:
-                        version = version_match.group(1)
-                        comparison = self.compare_versions(installed_version, version)
-                        return {
-                            "name": "filezilla-server",
-                            "installed_version": installed_version,
-                            "latest_version": version,
-                            "update_available": comparison < 0,
-                            "release_date": "Check website for details",
-                            "release_url": "https://filezilla-project.org/download.php?type=server",
-                            "last_checked": datetime.now().isoformat(),
-                            "status": "active",
-                            "source": "Official Website"
-                        }
+                    # Look for multiple version patterns
+                    version_patterns = [
+                        r'The latest stable version of FileZilla Server is (\d+\.\d+(?:\.\d+)?)',
+                        r'FileZilla Server (\d+\.\d+(?:\.\d+)?)',
+                        r'Version (\d+\.\d+(?:\.\d+)?)'
+                    ]
+                    
+                    for pattern in version_patterns:
+                        version_match = re.search(pattern, response.text)
+                        if version_match:
+                            version = version_match.group(1)
+                            comparison = self.compare_versions(installed_version, version)
+                            return {
+                                "name": "filezilla-server",
+                                "installed_version": installed_version,
+                                "latest_version": version,
+                                "update_available": comparison < 0,
+                                "release_date": "Check website for details",
+                                "release_url": "https://filezilla-project.org/download.php?type=server",
+                                "last_checked": datetime.now().isoformat(),
+                                "status": "active",
+                                "source": "Official Website"
+                            }
             except Exception as e:
                 print(f"Error checking FileZilla Server: {e}")
         
