@@ -132,6 +132,32 @@ except ImportError:
 class SoftwareChecker:
     def __init__(self):
         self.data_file = "putty_winscp_status.json"
+        # Installed versions - diese können in CLAUDE.md oder Umgebungsvariablen konfiguriert werden
+        self.installed_versions = {
+            'putty': os.environ.get('PUTTY_VERSION', '0.83'),
+            'winscp': os.environ.get('WINSCP_VERSION', '6.5')
+        }
+    
+    def compare_versions(self, v1, v2):
+        """Compare two version strings"""
+        try:
+            parts1 = [int(x) for x in v1.split('.')]
+            parts2 = [int(x) for x in v2.split('.')]
+            
+            # Pad with zeros if needed
+            while len(parts1) < len(parts2):
+                parts1.append(0)
+            while len(parts2) < len(parts1):
+                parts2.append(0)
+            
+            for i in range(len(parts1)):
+                if parts1[i] < parts2[i]:
+                    return -1  # v1 is older
+                elif parts1[i] > parts2[i]:
+                    return 1   # v1 is newer
+            return 0  # equal
+        except:
+            return 0  # If comparison fails, assume equal
         
     def check_github_releases(self, owner, repo):
         """Check latest release from GitHub"""
@@ -157,10 +183,16 @@ class SoftwareChecker:
     
     def check_putty(self):
         """Check PuTTY version from official website"""
+        installed_version = self.installed_versions.get('putty', 'Unknown')
+        
         if not BS4_AVAILABLE:
+            latest_version = "0.78"
+            comparison = self.compare_versions(installed_version, latest_version)
             return {
                 "name": "putty",
-                "latest_version": "0.78",
+                "installed_version": installed_version,
+                "latest_version": latest_version,
+                "update_available": comparison < 0,
                 "release_date": "Check website for details", 
                 "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
                 "last_checked": datetime.now().isoformat(),
@@ -178,9 +210,12 @@ class SoftwareChecker:
                     version_match = re.search(r'PuTTY.*?(\d+\.\d+)', title.text)
                     if version_match:
                         version = version_match.group(1)
+                        comparison = self.compare_versions(installed_version, version)
                         return {
                             "name": "putty",
+                            "installed_version": installed_version,
                             "latest_version": version,
+                            "update_available": comparison < 0,
                             "release_date": "Check website for details",
                             "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
                             "last_checked": datetime.now().isoformat(),
@@ -190,18 +225,27 @@ class SoftwareChecker:
         except Exception as e:
             print(f"Error checking PuTTY: {e}")
         
+        latest_version = "0.78"
+        comparison = self.compare_versions(installed_version, latest_version)
         return {
             "name": "putty",
-            "latest_version": "0.78 (fallback)",
+            "installed_version": installed_version,
+            "latest_version": f"{latest_version} (fallback)",
+            "update_available": comparison < 0,
             "error": "Failed to fetch version",
             "last_checked": datetime.now().isoformat()
         }
     
     def check_winscp(self):
         """Check WinSCP version from GitHub or official site"""
+        installed_version = self.installed_versions.get('winscp', 'Unknown')
+        
         # First try GitHub API (doesn't need BeautifulSoup)
         github_result = self.check_github_releases("winscp", "winscp")
         if github_result and "error" not in github_result:
+            comparison = self.compare_versions(installed_version, github_result["latest_version"])
+            github_result["installed_version"] = installed_version
+            github_result["update_available"] = comparison < 0
             return github_result
         
         # Fallback to web scraping only if BS4 is available
@@ -214,9 +258,12 @@ class SoftwareChecker:
                     version_match = re.search(r'WinSCP\s+(\d+\.\d+(?:\.\d+)?)', response.text)
                     if version_match:
                         version = version_match.group(1)
+                        comparison = self.compare_versions(installed_version, version)
                         return {
                             "name": "winscp",
+                            "installed_version": installed_version,
                             "latest_version": version,
+                            "update_available": comparison < 0,
                             "release_date": "Check website for details",
                             "release_url": "https://winscp.net/eng/downloads.php",
                             "last_checked": datetime.now().isoformat(),
@@ -226,9 +273,13 @@ class SoftwareChecker:
             except Exception as e:
                 print(f"Error checking WinSCP website: {e}")
         
+        latest_version = "6.1.2"
+        comparison = self.compare_versions(installed_version, latest_version)
         return {
             "name": "winscp",
-            "latest_version": "6.1.2 (fallback)",
+            "installed_version": installed_version,
+            "latest_version": f"{latest_version} (fallback)",
+            "update_available": comparison < 0,
             "release_date": "Check website for details",
             "release_url": "https://winscp.net/eng/downloads.php",
             "last_checked": datetime.now().isoformat(),
