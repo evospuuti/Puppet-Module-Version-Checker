@@ -379,7 +379,6 @@ class SoftwareChecker:
 software_checker = SoftwareChecker()
 
 @app.route('/api/putty_winscp_status')
-@cache.cached(timeout=3600)  # Cache for 1 hour
 def get_putty_winscp_status():
     """API endpoint for PuTTY and WinSCP status data"""
     try:
@@ -389,11 +388,24 @@ def get_putty_winscp_status():
             return jsonify(cached_data)
         
         # If not in cache, run fresh check
+        print("No cached data found, running fresh software check...")
         data = software_checker.run_checks()
         return jsonify(data)
     except Exception as e:
         print(f"Error getting PuTTY/WinSCP status: {e}")
-        return jsonify({"error": "Failed to load software status"}), 500
+        # Return a fallback response instead of error
+        return jsonify({
+            "putty": {
+                "name": "putty",
+                "error": f"Failed to fetch version: {str(e)}",
+                "last_checked": datetime.now().isoformat()
+            },
+            "winscp": {
+                "name": "winscp", 
+                "error": f"Failed to fetch version: {str(e)}",
+                "last_checked": datetime.now().isoformat()
+            }
+        })
 
 @app.route('/api/refresh_putty_winscp', methods=['POST'])
 def refresh_putty_winscp():
@@ -401,11 +413,28 @@ def refresh_putty_winscp():
     try:
         # Clear cache and run fresh check
         cache.delete('putty_winscp_data')
+        print("Starting manual refresh of software data...")
         data = software_checker.run_checks()
         return jsonify({"status": "Refresh completed", "data": data})
     except Exception as e:
         print(f"Error refreshing PuTTY/WinSCP: {e}")
-        return jsonify({"error": "Failed to refresh software data"}), 500
+        # Return partial data instead of error
+        return jsonify({
+            "status": "Refresh failed", 
+            "error": str(e),
+            "data": {
+                "putty": {
+                    "name": "putty",
+                    "error": f"Refresh failed: {str(e)}",
+                    "last_checked": datetime.now().isoformat()
+                },
+                "winscp": {
+                    "name": "winscp", 
+                    "error": f"Refresh failed: {str(e)}",
+                    "last_checked": datetime.now().isoformat()
+                }
+            }
+        })
 
 # API-Endpunkt für Systemstatus-Zusammenfassung
 @app.route('/api/system_status', methods=['GET'])

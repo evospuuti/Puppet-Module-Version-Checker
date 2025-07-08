@@ -198,13 +198,21 @@
 
         async function loadSoftwareData() {
             try {
+                console.log('Loading software data...');
                 const response = await fetch('/api/putty_winscp_status');
                 
                 if (!response.ok) {
-                    throw new Error('Failed to fetch software data');
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
+                console.log('Received software data:', data);
+                
+                // Check if data has any content
+                if (!data || Object.keys(data).length === 0) {
+                    throw new Error('No data received from API');
+                }
+                
                 displaySoftwareData(data);
                 
                 lastUpdateTime = new Date();
@@ -214,9 +222,12 @@
                 console.error('Error loading software data:', error);
                 document.getElementById('softwareContainer').innerHTML = `
                     <div class="col-span-full text-center py-8">
-                        <p class="text-red-600">Fehler beim Laden der Software-Daten</p>
+                        <p class="text-red-600">Fehler beim Laden der Software-Daten: ${error.message}</p>
                         <button onclick="loadSoftwareData()" class="mt-4 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90">
                             Erneut versuchen
+                        </button>
+                        <button onclick="refreshSoftwareData()" class="mt-4 ml-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/90">
+                            Manuell aktualisieren
                         </button>
                     </div>
                 `;
@@ -227,23 +238,35 @@
             const container = document.getElementById('softwareContainer');
             container.innerHTML = '';
 
+            console.log('Displaying software data:', data);
+
             // Filter nur PuTTY und WinSCP
             const softwareToShow = ['putty', 'winscp'];
+            let cardsAdded = 0;
             
             softwareToShow.forEach(key => {
                 if (data[key]) {
                     const software = data[key];
+                    console.log(`Creating card for ${key}:`, software);
                     const card = createSoftwareCard(software);
                     container.appendChild(card);
+                    cardsAdded++;
                 }
             });
 
-            if (container.children.length === 0) {
+            if (cardsAdded === 0) {
+                console.log('No cards added, showing empty state');
                 container.innerHTML = `
                     <div class="col-span-full text-center py-8">
                         <p class="text-muted-foreground">Keine Software-Daten verfügbar</p>
+                        <p class="text-sm text-muted-foreground mt-2">Verfügbare Daten: ${Object.keys(data).join(', ')}</p>
+                        <button onclick="refreshSoftwareData()" class="mt-4 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90">
+                            Daten laden
+                        </button>
                     </div>
                 `;
+            } else {
+                console.log(`Successfully added ${cardsAdded} software cards`);
             }
         }
 
