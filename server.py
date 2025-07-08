@@ -556,11 +556,35 @@ def get_system_status():
     except Exception as e:
         eol_status = {"status": "Error", "details": str(e)}
     
+    # Software Status (PuTTY/WinSCP)
+    software_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        cached_data = cache.get('putty_winscp_data')
+        if cached_data:
+            error_count = 0
+            total_count = 0
+            for key, software in cached_data.items():
+                total_count += 1
+                if 'error' in software:
+                    error_count += 1
+            
+            if error_count == 0:
+                software_status = {"status": "OK", "details": f"Alle {total_count} Software-Tools erreichbar"}
+            elif error_count < total_count:
+                software_status = {"status": "Warnung", "details": f"{error_count}/{total_count} Software-Tools mit Fehlern"}
+            else:
+                software_status = {"status": "Kritisch", "details": "Alle Software-Tools fehlerhaft"}
+        else:
+            software_status = {"status": "Info", "details": "Noch keine Software-Daten geladen"}
+    except Exception as e:
+        software_status = {"status": "Error", "details": str(e)}
+
     return jsonify({
         "puppet": puppet_status,
         "websites": website_status,
         "ssl": ssl_status,
         "eol": eol_status,
+        "software": software_status,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
 
@@ -572,7 +596,19 @@ def serve(path):
     else:
         return send_from_directory('public', 'index.html')
 
+def initialize_software_data():
+    """Initialize software data on startup"""
+    try:
+        print("Initializing software data...")
+        software_checker.run_checks()
+        print("Software data initialized successfully")
+    except Exception as e:
+        print(f"Error initializing software data: {e}")
+
 if __name__ == '__main__':
+    # Initialize software data on startup
+    initialize_software_data()
+    
     # Starte den Monitoring-Thread im Hintergrund
     monitor_thread = threading.Thread(target=monitor_websites, daemon=True)
     monitor_thread.start()
