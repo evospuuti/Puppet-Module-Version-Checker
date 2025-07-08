@@ -16,23 +16,34 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 CORS(app)
 
-# Verbesserte Cache-Konfiguration
+# Cache-Konfiguration für Vercel (serverless-freundlich)
 cache_config = {
     "CACHE_TYPE": "SimpleCache",
     "CACHE_DEFAULT_TIMEOUT": 300
 }
 
-if "REDIS_URL" in os.environ:
-    redis_url = os.environ["REDIS_URL"]
-    parsed_url = urlparse(redis_url)
-    if not parsed_url.scheme:
-        redis_url = f"redis://{redis_url}"
-    
-    cache_config.update({
-        "CACHE_TYPE": "redis",
-        "CACHE_REDIS_URL": redis_url,
-        "CACHE_OPTIONS": {"socket_timeout": 5, "socket_connect_timeout": 5}
-    })
+# Deaktiviere Redis in serverless Umgebungen
+if "REDIS_URL" in os.environ and not os.environ.get("VERCEL"):
+    try:
+        redis_url = os.environ["REDIS_URL"]
+        parsed_url = urlparse(redis_url)
+        if not parsed_url.scheme:
+            redis_url = f"redis://{redis_url}"
+        
+        cache_config.update({
+            "CACHE_TYPE": "redis",
+            "CACHE_REDIS_URL": redis_url,
+            "CACHE_OPTIONS": {"socket_timeout": 5, "socket_connect_timeout": 5}
+        })
+        print("Using Redis cache")
+    except Exception as e:
+        print(f"Redis connection failed, falling back to SimpleCache: {e}")
+        cache_config = {
+            "CACHE_TYPE": "SimpleCache",
+            "CACHE_DEFAULT_TIMEOUT": 300
+        }
+else:
+    print("Using SimpleCache (no Redis or Vercel environment)")
 
 cache = Cache(app, config=cache_config)
 
