@@ -145,7 +145,7 @@
 
 
         <!-- Software Status Cards -->
-        <div id="softwareContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div id="softwareContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             <!-- Loading placeholder -->
             <div class="col-span-full text-center py-8">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -228,8 +228,12 @@
 
             console.log('Displaying software data:', data);
 
-            // Zeige alle 4 Software-Tools
-            const softwareToShow = ['putty', 'winscp', 'filezilla-server', 'firefox'];
+            // Zeige alle 10 Software-Tools
+            const softwareToShow = [
+                'putty', 'winscp', 'filezilla-server', 'firefox',
+                'trendmicro-agent', 'lithnet-password-protection', 'vmware-log-insight-agent',
+                'nessus-agent', 'splunkforwarder', 'vmwaretools'
+            ];
             let cardsAdded = 0;
             
             softwareToShow.forEach(key => {
@@ -391,7 +395,13 @@
                 'putty': 'PuTTY',
                 'winscp': 'WinSCP',
                 'filezilla-server': 'FileZilla Server',
-                'firefox': 'Firefox'
+                'firefox': 'Firefox',
+                'trendmicro-agent': 'Trend Micro Agent',
+                'lithnet-password-protection': 'Lithnet Password Protection',
+                'vmware-log-insight-agent': 'VMware Log Insight Agent',
+                'nessus-agent': 'Nessus Agent',
+                'splunkforwarder': 'Splunk Forwarder',
+                'vmwaretools': 'VMware Tools'
             };
             return displayNames[softwareName] || softwareName.toUpperCase();
         }
