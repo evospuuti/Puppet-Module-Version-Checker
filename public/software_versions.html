@@ -228,11 +228,9 @@
 
             console.log('Displaying software data:', data);
 
-            // Zeige alle 10 Software-Tools
+            // Zeige alle 5 Software-Tools
             const softwareToShow = [
-                'putty', 'winscp', 'filezilla-server', 'firefox',
-                'trendmicro-agent', 'lithnet-password-protection', 'vmware-log-insight-agent',
-                'nessus-agent', 'splunkforwarder', 'vmwaretools'
+                'putty', 'winscp', 'filezilla-server', 'firefox', 'lithnet-password-protection'
             ];
             let cardsAdded = 0;
             
@@ -396,12 +394,7 @@
                 'winscp': 'WinSCP',
                 'filezilla-server': 'FileZilla Server',
                 'firefox': 'Firefox',
-                'trendmicro-agent': 'Trend Micro Agent',
-                'lithnet-password-protection': 'Lithnet Password Protection',
-                'vmware-log-insight-agent': 'VMware Log Insight Agent',
-                'nessus-agent': 'Nessus Agent',
-                'splunkforwarder': 'Splunk Forwarder',
-                'vmwaretools': 'VMware Tools'
+                'lithnet-password-protection': 'Lithnet Password Protection'
             };
             return displayNames[softwareName] || softwareName.toUpperCase();
         }

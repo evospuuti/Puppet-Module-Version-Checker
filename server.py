@@ -138,12 +138,7 @@ class SoftwareChecker:
             'winscp': os.environ.get('WINSCP_VERSION', '6.5'),
             'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.9.4'),
             'firefox': os.environ.get('FIREFOX_VERSION', '128.12.0'),
-            'trendmicro-agent': os.environ.get('TRENDMICRO_AGENT_VERSION', '14.0.0'),
-            'lithnet-password-protection': os.environ.get('LITHNET_PASSWORD_PROTECTION_VERSION', '1.0.0'),
-            'vmware-log-insight-agent': os.environ.get('VMWARE_LOG_INSIGHT_AGENT_VERSION', '8.0.0'),
-            'nessus-agent': os.environ.get('NESSUS_AGENT_VERSION', '10.0.0'),
-            'splunkforwarder': os.environ.get('SPLUNKFORWARDER_VERSION', '9.0.0'),
-            'vmwaretools': os.environ.get('VMWARETOOLS_VERSION', '12.0.0')
+            'lithnet-password-protection': os.environ.get('LITHNET_PASSWORD_PROTECTION_VERSION', '1.0.0')
         }
     
     def compare_versions(self, v1, v2):
@@ -397,26 +392,6 @@ class SoftwareChecker:
             "error": "Failed to fetch live version"
         }
     
-    def check_trendmicro_agent(self):
-        """Check Trend Micro Agent version"""
-        installed_version = self.installed_versions.get('trendmicro-agent', 'Unknown')
-        
-        # Since Trend Micro agent versions are typically enterprise/licensed, use fallback
-        latest_version = "14.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "trendmicro-agent",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check Trend Micro portal for details",
-            "release_url": "https://www.trendmicro.com/",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Manual Configuration",
-            "note": "Enterprise software - check Trend Micro portal for updates"
-        }
-    
     def check_lithnet_password_protection(self):
         """Check Lithnet Password Protection version from GitHub"""
         installed_version = self.installed_versions.get('lithnet-password-protection', 'Unknown')
@@ -446,86 +421,6 @@ class SoftwareChecker:
             "error": "Failed to fetch live version"
         }
     
-    def check_vmware_log_insight_agent(self):
-        """Check VMware Log Insight Agent version"""
-        installed_version = self.installed_versions.get('vmware-log-insight-agent', 'Unknown')
-        
-        # VMware products require enterprise access, use fallback
-        latest_version = "8.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "vmware-log-insight-agent",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check VMware portal for details",
-            "release_url": "https://www.vmware.com/products/log-insight.html",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Manual Configuration",
-            "note": "Enterprise software - check VMware portal for updates"
-        }
-    
-    def check_nessus_agent(self):
-        """Check Nessus Agent version"""
-        installed_version = self.installed_versions.get('nessus-agent', 'Unknown')
-        
-        # Nessus is enterprise software, use fallback
-        latest_version = "10.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "nessus-agent",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check Tenable portal for details",
-            "release_url": "https://www.tenable.com/products/nessus",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Manual Configuration",
-            "note": "Enterprise software - check Tenable portal for updates"
-        }
-    
-    def check_splunkforwarder(self):
-        """Check Splunk Forwarder version"""
-        installed_version = self.installed_versions.get('splunkforwarder', 'Unknown')
-        
-        # Splunk is enterprise software, use fallback
-        latest_version = "9.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "splunkforwarder",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check Splunk portal for details",
-            "release_url": "https://www.splunk.com/en_us/download/universal-forwarder.html",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Manual Configuration",
-            "note": "Enterprise software - check Splunk portal for updates"
-        }
-    
-    def check_vmwaretools(self):
-        """Check VMware Tools version"""
-        installed_version = self.installed_versions.get('vmwaretools', 'Unknown')
-        
-        # VMware Tools version depends on VMware product version, use fallback
-        latest_version = "12.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "vmwaretools",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check VMware portal for details",
-            "release_url": "https://www.vmware.com/support/developer/vddk/",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Manual Configuration",
-            "note": "Version depends on VMware product version"
-        }
-    
     def run_checks(self):
         """Run software checks for all configured software"""
         results = {}
@@ -542,23 +437,8 @@ class SoftwareChecker:
         print("Checking Firefox...")
         results["firefox"] = self.check_firefox()
         
-        print("Checking Trend Micro Agent...")
-        results["trendmicro-agent"] = self.check_trendmicro_agent()
-        
         print("Checking Lithnet Password Protection...")
         results["lithnet-password-protection"] = self.check_lithnet_password_protection()
-        
-        print("Checking VMware Log Insight Agent...")
-        results["vmware-log-insight-agent"] = self.check_vmware_log_insight_agent()
-        
-        print("Checking Nessus Agent...")
-        results["nessus-agent"] = self.check_nessus_agent()
-        
-        print("Checking Splunk Forwarder...")
-        results["splunkforwarder"] = self.check_splunkforwarder()
-        
-        print("Checking VMware Tools...")
-        results["vmwaretools"] = self.check_vmwaretools()
         
         # Save results to cache
         cache.set('putty_winscp_data', results, timeout=3600)  # 1 hour cache
