@@ -7,9 +7,9 @@
 const serverVersions = {
     'dsc-auditpolicydsc': '1.4.0-0-9',
     'puppet-alternatives': '6.0.0',
-    'puppet-archive': '7.1.0',
-    'puppet-systemd': '8.2.0',
-    'puppetlabs-apt': '10.0.1',
+    'puppet-archive': '8.1.0',
+    'puppet-systemd': '9.0.1',
+    'puppetlabs-apt': '11.1.0',
     'puppetlabs-facts': '1.7.0',
     'puppetlabs-inifile': '6.2.0',
     'puppetlabs-powershell': '6.0.2',
@@ -335,4 +335,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialen Tabellendaten laden
     fetchModuleData();
+
 });
