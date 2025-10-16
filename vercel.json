@@ -2,11 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.py",
-      "use": "@vercel/python"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "15mb"
+      }
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/index.py"
+    },
     {
       "src": "/styles/(.*)",
       "dest": "/public/styles/$1"
@@ -20,12 +31,17 @@
       "dest": "/public/$1"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "server.py"
+      "src": "/",
+      "dest": "/public/index.html"
     },
     {
       "src": "/(.*)",
-      "dest": "server.py"
+      "dest": "/api/index.py"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "**"
+    }
+  }
 }
