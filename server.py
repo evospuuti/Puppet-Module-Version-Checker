@@ -208,42 +208,53 @@ def get_website_status():
 @cache.cached(timeout=3600)  # 1 Stunde Cache
 def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
-    modules = [
-        'dsc-auditpolicydsc',
-        'puppet-ca_cert',
-        'puppet-alternatives',
-        'puppet-archive',
-        'puppet-systemd',
-        'puppetlabs-apt',
-        'puppetlabs-facts',
-        'puppetlabs-inifile',
-        'puppetlabs-powershell',
-        'puppetlabs-registry',
-        'puppetlabs-stdlib',
-        'saz-sudo'
-    ]
+    # Hardcoded installed versions - in production, these should come from a database or config file
+    installed_modules = {
+        'dsc-auditpolicydsc': '3.1.1',
+        'puppet-ca_cert': '2.4.0',
+        'puppet-alternatives': '4.1.0',
+        'puppet-archive': '6.1.1',
+        'puppet-systemd': '3.10.0',
+        'puppetlabs-apt': '8.5.0',
+        'puppetlabs-facts': '1.4.0',
+        'puppetlabs-inifile': '5.4.0',
+        'puppetlabs-powershell': '5.2.0',
+        'puppetlabs-registry': '4.1.0',
+        'puppetlabs-stdlib': '8.5.0',
+        'saz-sudo': '7.0.0'
+    }
     
     result = []
-    for module in modules:
+    for module_name, installed_version in installed_modules.items():
         try:
-            url = f'https://forgeapi.puppet.com/v3/modules/{module}'
+            url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
             
+            forge_version = data['current_release']['version']
             deprecated = data.get('deprecated_at') is not None
             
+            # Compare versions
+            status = 'current' if installed_version == forge_version else 'outdated'
+            
             result.append({
-                'name': module,
-                'forgeVersion': data['current_release']['version'],
-                'url': f'https://forge.puppet.com/modules/{module.replace("-", "/")}',
-                'deprecated': deprecated
+                'name': module_name,
+                'serverVersion': installed_version,
+                'forgeVersion': forge_version,
+                'status': status,
+                'deprecated': deprecated,
+                'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
             })
         except requests.RequestException as e:
-            print(f"Error fetching module {module}: {e}")
+            print(f"Error fetching module {module_name}: {e}")
             result.append({
-                'name': module,
-                'error': 'Failed to fetch data'
+                'name': module_name,
+                'serverVersion': installed_version,
+                'forgeVersion': 'N/A',
+                'status': 'error',
+                'deprecated': False,
+                'error': str(e)
             })
     
     return jsonify(result)
