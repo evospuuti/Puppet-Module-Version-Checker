@@ -14,24 +14,12 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 CORS(app)
 
-# Verbesserte Cache-Konfiguration für Vercel
+# Cache-Konfiguration für Vercel - nur SimpleCache verwenden
+# Redis wird in Serverless-Umgebung nicht unterstützt
 cache_config = {
     "CACHE_TYPE": "SimpleCache",
     "CACHE_DEFAULT_TIMEOUT": 300
 }
-
-# Optionale Redis-Konfiguration, falls verfügbar
-if "REDIS_URL" in os.environ:
-    redis_url = os.environ["REDIS_URL"]
-    parsed_url = urlparse(redis_url)
-    if not parsed_url.scheme:
-        redis_url = f"redis://{redis_url}"
-    
-    cache_config.update({
-        "CACHE_TYPE": "redis",
-        "CACHE_REDIS_URL": redis_url,
-        "CACHE_OPTIONS": {"socket_timeout": 5, "socket_connect_timeout": 5}
-    })
 
 cache = Cache(app, config=cache_config)
 
