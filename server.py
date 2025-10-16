@@ -546,6 +546,3 @@ def serve(path):
 # Kein if __name__ == '__main__' nötig für Vercel Serverless Functions.
 # Der Background-Thread-Code wurde entfernt, da er nicht serverless-kompatibel ist.
 # Website-Monitoring erfolgt jetzt on-demand über /api/check_website
-
-# Export the app for Vercel
-app = app
