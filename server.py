@@ -208,56 +208,71 @@ def get_website_status():
 @cache.cached(timeout=3600)  # 1 Stunde Cache
 def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
-    # Hardcoded installed versions - in production, these should come from a database or config file
-    installed_modules = {
-        'dsc-auditpolicydsc': '3.1.1',
-        'puppet-ca_cert': '2.4.0',
-        'puppet-alternatives': '4.1.0',
-        'puppet-archive': '6.1.1',
-        'puppet-systemd': '3.10.0',
-        'puppetlabs-apt': '8.5.0',
-        'puppetlabs-facts': '1.4.0',
-        'puppetlabs-inifile': '5.4.0',
-        'puppetlabs-powershell': '5.2.0',
-        'puppetlabs-registry': '4.1.0',
-        'puppetlabs-stdlib': '8.5.0',
-        'saz-sudo': '7.0.0'
-    }
-    
-    result = []
-    for module_name, installed_version in installed_modules.items():
-        try:
-            url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            
-            forge_version = data['current_release']['version']
-            deprecated = data.get('deprecated_at') is not None
-            
-            # Compare versions
-            status = 'current' if installed_version == forge_version else 'outdated'
-            
-            result.append({
-                'name': module_name,
-                'serverVersion': installed_version,
-                'forgeVersion': forge_version,
-                'status': status,
-                'deprecated': deprecated,
-                'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
-            })
-        except requests.RequestException as e:
-            print(f"Error fetching module {module_name}: {e}")
-            result.append({
+    try:
+        # Hardcoded installed versions - in production, these should come from a database or config file
+        installed_modules = {
+            'dsc-auditpolicydsc': '3.1.1',
+            'puppet-ca_cert': '2.4.0',
+            'puppet-alternatives': '4.1.0',
+            'puppet-archive': '6.1.1',
+            'puppet-systemd': '3.10.0',
+            'puppetlabs-apt': '8.5.0',
+            'puppetlabs-facts': '1.4.0',
+            'puppetlabs-inifile': '5.4.0',
+            'puppetlabs-powershell': '5.2.0',
+            'puppetlabs-registry': '4.1.0',
+            'puppetlabs-stdlib': '8.5.0',
+            'saz-sudo': '7.0.0'
+        }
+        
+        result = []
+        for module_name, installed_version in installed_modules.items():
+            module_data = {
                 'name': module_name,
                 'serverVersion': installed_version,
                 'forgeVersion': 'N/A',
-                'status': 'error',
+                'status': 'unknown',
                 'deprecated': False,
-                'error': str(e)
-            })
-    
-    return jsonify(result)
+                'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
+            }
+            
+            try:
+                url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
+                response = requests.get(url, timeout=15, headers={'User-Agent': 'Puppet-Version-Checker/1.0'})
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    if 'current_release' in data and 'version' in data['current_release']:
+                        forge_version = data['current_release']['version']
+                        module_data['forgeVersion'] = forge_version
+                        module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
+                    
+                    module_data['deprecated'] = data.get('deprecated_at') is not None
+                else:
+                    print(f"API returned status {response.status_code} for {module_name}")
+                    module_data['status'] = 'error'
+                    module_data['error'] = f"API returned status {response.status_code}"
+                    
+            except requests.Timeout:
+                print(f"Timeout fetching module {module_name}")
+                module_data['status'] = 'error'
+                module_data['error'] = 'Request timeout'
+            except requests.RequestException as e:
+                print(f"Error fetching module {module_name}: {str(e)}")
+                module_data['status'] = 'error'
+                module_data['error'] = str(e)
+            except Exception as e:
+                print(f"Unexpected error for module {module_name}: {str(e)}")
+                module_data['status'] = 'error'
+                module_data['error'] = f"Unexpected error: {str(e)}"
+            
+            result.append(module_data)
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Critical error in get_modules: {str(e)}")
+        return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
 # ============================================================================
 # API ROUTES - EOL DATA
