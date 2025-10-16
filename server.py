@@ -1,8 +1,8 @@
 import os
+import ssl
+import socket
 import requests
-import threading
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
@@ -11,57 +11,167 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 CORS(app)
 
-# Cache-Konfiguration für Vercel (serverless-freundlich)
+# Vereinfachte Cache-Konfiguration für Vercel Serverless
 cache_config = {
     "CACHE_TYPE": "SimpleCache",
     "CACHE_DEFAULT_TIMEOUT": 300
 }
 
-# Deaktiviere Redis in serverless Umgebungen
-if "REDIS_URL" in os.environ and not os.environ.get("VERCEL"):
-    try:
-        redis_url = os.environ["REDIS_URL"]
-        parsed_url = urlparse(redis_url)
-        if not parsed_url.scheme:
-            redis_url = f"redis://{redis_url}"
-        
-        cache_config.update({
-            "CACHE_TYPE": "redis",
-            "CACHE_REDIS_URL": redis_url,
-            "CACHE_OPTIONS": {"socket_timeout": 5, "socket_connect_timeout": 5}
-        })
-        print("Using Redis cache")
-    except Exception as e:
-        print(f"Redis connection failed, falling back to SimpleCache: {e}")
-        cache_config = {
-            "CACHE_TYPE": "SimpleCache",
-            "CACHE_DEFAULT_TIMEOUT": 300
-        }
-else:
-    print("Using SimpleCache (no Redis or Vercel environment)")
-
 cache = Cache(app, config=cache_config)
 
+# Pushover configuration
+PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY", "ukiu6xsyzf67o17bq2p4ucvs83dx84")
+PUSHOVER_API_TOKEN = os.environ.get("PUSHOVER_API_TOKEN", "aoz51q2bfsb74dzfn3dc2xmoie8mzo")
 
+def send_pushover_notification(message, title):
+    """Sendet Push-Benachrichtigung über Pushover."""
+    url = "https://api.pushover.net/1/messages.json"
+    data = {
+        "token": PUSHOVER_API_TOKEN,
+        "user": PUSHOVER_USER_KEY,
+        "message": message,
+        "title": title
+    }
+    try:
+        response = requests.post(url, data=data, timeout=5)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Pushover notification error: {e}")
+        return False
 
-# Ergänzende Routen (wie im Original)
+def check_ssl_certificate(hostname, port=443, timeout=3.0):
+    """Prüft SSL-Zertifikat und gibt Ablaufdatum zurück."""
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((hostname, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                cert = ssock.getpeercert()
+                expiry_date = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y GMT')
+                
+                # Zusätzliche Zertifikatsinformationen
+                cert_info = {
+                    'expiry': expiry_date.strftime('%Y-%m-%d %H:%M:%S'),
+                    'subject': dict(x[0] for x in cert['subject']),
+                    'issuer': dict(x[0] for x in cert['issuer'])
+                }
+                return cert_info
+    except Exception as e:
+        print(f"SSL check error for {hostname}: {e}")
+        return None
+
+def check_website(site_url):
+    """Prüft Website-Status und SSL-Zertifikat."""
+    site = {
+        'url': site_url,
+        'status': 'Unknown',
+        'last_checked': 'Never',
+        'cert_expiry': 'Unknown',
+        'certIssuer': None,
+        'certValidFrom': None
+    }
+    
+    try:
+        response = requests.get(site_url, timeout=5, verify=True)
+        site['status'] = 'Online' if response.status_code == 200 else 'Offline'
+        site['response_code'] = response.status_code
+        
+        # SSL-Zertifikatsprüfung für HTTPS-URLs
+        if site_url.startswith('https://'):
+            hostname = urlparse(site_url).netloc
+            cert_info = check_ssl_certificate(hostname)
+            
+            if cert_info:
+                site['cert_expiry'] = cert_info['expiry']
+                site['certIssuer'] = cert_info['issuer'].get('organizationName', 'Unknown')
+                
+                # Valid From Datum aus dem Zertifikat
+                try:
+                    context = ssl.create_default_context()
+                    with socket.create_connection((hostname, 443), timeout=3.0) as sock:
+                        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                            cert = ssock.getpeercert()
+                            valid_from = datetime.strptime(cert['notBefore'], '%b %d %H:%M:%S %Y GMT')
+                            site['certValidFrom'] = valid_from.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+        
+    except requests.RequestException as e:
+        site['status'] = 'Offline'
+        site['error'] = str(e)
+        
+        # Benachrichtigung bei Offline-Status
+        cached_status = cache.get(f'website_status_{site_url}')
+        if cached_status != 'Offline':
+            send_pushover_notification(
+                f"Website {site_url} ist offline! Fehler: {str(e)}", 
+                "Website Monitoring Alert"
+            )
+        cache.set(f'website_status_{site_url}', 'Offline', timeout=300)
+    
+    site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return site
+
+# ============================================================================
+# STATIC FILES ROUTES
+# ============================================================================
+
 @app.route('/styles/<path:filename>')
 def serve_styles(filename):
+    """Serve CSS files."""
     return send_from_directory('public/styles', filename)
 
 @app.route('/scripts/<path:filename>')
 def serve_scripts(filename):
+    """Serve JavaScript files."""
     return send_from_directory('public/scripts', filename)
 
 @app.after_request
 def add_cache_headers(response):
+    """Add cache headers for static files."""
     if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
         response.headers['Cache-Control'] = 'public, max-age=86400'  # 1 day
     return response
 
+# ============================================================================
+# API ROUTES - WEBSITE MONITORING
+# ============================================================================
+
+@app.route('/api/check_website', methods=['GET'])
+def get_website_status():
+    """
+    Prüft den Status aller konfigurierten Websites.
+    Query Parameter: force=true für erzwungene Aktualisierung
+    """
+    websites_to_check = [
+        'https://www.spherea.de',
+        'https://www.rapunzel.de'
+    ]
+    
+    # Prüfe Cache
+    cached_data = cache.get('website_status_all')
+    force_check = request.args.get('force', '').lower() == 'true'
+    
+    if not force_check and cached_data:
+        return jsonify(cached_data)
+    
+    # Führe Checks durch
+    results = []
+    for url in websites_to_check:
+        results.append(check_website(url))
+    
+    # Cache aktualisieren (60 Sekunden)
+    cache.set('website_status_all', results, timeout=60)
+    
+    return jsonify(results)
+
+# ============================================================================
+# API ROUTES - PUPPET MODULES
+# ============================================================================
+
 @app.route('/api/modules', methods=['GET'])
-@cache.cached(timeout=3600)
+@cache.cached(timeout=3600)  # 1 Stunde Cache
 def get_modules():
+    """Ruft Puppet Module Informationen vom Puppet Forge ab."""
     modules = [
         'dsc-auditpolicydsc',
         'puppet-ca_cert',
@@ -84,508 +194,138 @@ def get_modules():
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             data = response.json()
+            
             deprecated = data.get('deprecated_at') is not None
+            
             result.append({
                 'name': module,
                 'forgeVersion': data['current_release']['version'],
                 'url': f'https://forge.puppet.com/modules/{module.replace("-", "/")}',
                 'deprecated': deprecated
             })
-        except requests.RequestException:
+        except requests.RequestException as e:
+            print(f"Error fetching module {module}: {e}")
             result.append({
                 'name': module,
                 'error': 'Failed to fetch data'
             })
+    
     return jsonify(result)
 
+# ============================================================================
+# API ROUTES - EOL DATA
+# ============================================================================
+
 @app.route('/api/eol/<system>', methods=['GET'])
-@cache.cached(timeout=86400)
+@cache.cached(timeout=86400)  # 24 Stunden Cache
 def get_eol_data(system):
+    """
+    Ruft End-of-Life Daten für Betriebssysteme ab.
+    Unterstützt: debian, sles, windows-server
+    """
     try:
         url = f'https://endoflife.date/api/{system}.json'
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         
+        # Filtere relevante Versionen
         if system == 'debian':
             data = [version for version in data if version['cycle'] in ['11', '12']]
         elif system == 'sles':
-            data = [version for version in data if version['cycle'] in ['12.5', '15', '15.1', '15.2', '15.3', '15.4', '15.5', '15.6']]
+            data = [version for version in data if version['cycle'] in [
+                '12.5', '15', '15.1', '15.2', '15.3', '15.4', '15.5', '15.6'
+            ]]
         elif system == 'windows-server':
-            data = [version for version in data if version['cycle'] in ['2019', '2022', '2025']]
+            data = [version for version in data if version['cycle'] in ['2019', '2022']]
         
         return jsonify(data)
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"Error fetching EOL data for {system}: {e}")
         return jsonify({"error": f"Failed to fetch {system} EOL data"}), 500
 
+# ============================================================================
+# API ROUTES - SOFTWARE VERSIONS
+# ============================================================================
 
-# PuTTY and WinSCP tracking functionality
-import json
-import re
-try:
-    from bs4 import BeautifulSoup
-    BS4_AVAILABLE = True
-except ImportError:
-    print("BeautifulSoup4 not available - using fallback mode")
-    BS4_AVAILABLE = False
+@app.route('/api/software_versions', methods=['GET'])
+def get_software_versions():
+    """Ruft alle gespeicherten Software-Versionen ab."""
+    software_versions = cache.get('software_versions')
+    if software_versions is None:
+        software_versions = []
+    return jsonify(software_versions)
 
-class SoftwareChecker:
-    def __init__(self):
-        self.data_file = "putty_winscp_status.json"
-        # Installed versions - diese können in CLAUDE.md oder Umgebungsvariablen konfiguriert werden
-        self.installed_versions = {
-            'putty': os.environ.get('PUTTY_VERSION', '0.83'),
-            'winscp': os.environ.get('WINSCP_VERSION', '6.5'),
-            'filezilla-server': os.environ.get('FILEZILLA_SERVER_VERSION', '1.9.4'),
-            'firefox': os.environ.get('FIREFOX_VERSION', '128.12.0'),
-            'lithnet-password-protection': os.environ.get('LITHNET_PASSWORD_PROTECTION_VERSION', '1.0.0')
-        }
+@app.route('/api/software_versions', methods=['POST'])
+def add_software_version():
+    """Fügt eine neue Software-Version hinzu."""
+    new_software = request.json
+    software_versions = cache.get('software_versions')
+    if software_versions is None:
+        software_versions = []
     
-    def compare_versions(self, v1, v2):
-        """Compare two version strings"""
-        try:
-            parts1 = [int(x) for x in v1.split('.')]
-            parts2 = [int(x) for x in v2.split('.')]
-            
-            # Pad with zeros if needed
-            while len(parts1) < len(parts2):
-                parts1.append(0)
-            while len(parts2) < len(parts1):
-                parts2.append(0)
-            
-            for i in range(len(parts1)):
-                if parts1[i] < parts2[i]:
-                    return -1  # v1 is older
-                elif parts1[i] > parts2[i]:
-                    return 1   # v1 is newer
-            return 0  # equal
-        except:
-            return 0  # If comparison fails, assume equal
-        
-    def check_github_releases(self, owner, repo):
-        """Check latest release from GitHub"""
-        try:
-            headers = {'Accept': 'application/vnd.github.v3+json'}
-            response = requests.get(f"https://api.github.com/repos/{owner}/{repo}/releases/latest", headers=headers)
-            
-            if response.status_code == 200:
-                data = response.json()
-                return {
-                    "name": repo,
-                    "latest_version": data.get("tag_name", "Unknown").lstrip("v"),
-                    "release_date": data.get("published_at", "Unknown"),
-                    "release_url": data.get("html_url", ""),
-                    "last_checked": datetime.now().isoformat(),
-                    "status": "active",
-                    "source": "GitHub"
-                }
-        except Exception as e:
-            print(f"Error checking GitHub {owner}/{repo}: {e}")
-        
-        return None
+    software_versions.append(new_software)
+    cache.set('software_versions', software_versions)
     
-    def check_putty(self):
-        """Check PuTTY version from official website"""
-        installed_version = self.installed_versions.get('putty', 'Unknown')
-        
-        if not BS4_AVAILABLE:
-            latest_version = "0.78"
-            comparison = self.compare_versions(installed_version, latest_version)
-            return {
-                "name": "putty",
-                "installed_version": installed_version,
-                "latest_version": latest_version,
-                "update_available": comparison < 0,
-                "release_date": "Check website for details", 
-                "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
-                "last_checked": datetime.now().isoformat(),
-                "status": "active",
-                "source": "Static (BS4 unavailable)"
-            }
-            
-        try:
-            response = requests.get("https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html", timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                # Look for version in the title or main heading
-                title = soup.find('title')
-                if title:
-                    version_match = re.search(r'PuTTY.*?(\d+\.\d+)', title.text)
-                    if version_match:
-                        version = version_match.group(1)
-                        comparison = self.compare_versions(installed_version, version)
-                        return {
-                            "name": "putty",
-                            "installed_version": installed_version,
-                            "latest_version": version,
-                            "update_available": comparison < 0,
-                            "release_date": "Check website for details",
-                            "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
-                            "last_checked": datetime.now().isoformat(),
-                            "status": "active",
-                            "source": "Official Website"
-                        }
-        except Exception as e:
-            print(f"Error checking PuTTY: {e}")
-        
-        latest_version = "0.78"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "putty",
-            "installed_version": installed_version,
-            "latest_version": f"{latest_version} (fallback)",
-            "update_available": comparison < 0,
-            "error": "Failed to fetch version",
-            "last_checked": datetime.now().isoformat()
-        }
-    
-    def check_winscp(self):
-        """Check WinSCP version from GitHub or official site"""
-        installed_version = self.installed_versions.get('winscp', 'Unknown')
-        
-        # First try GitHub API (doesn't need BeautifulSoup)
-        github_result = self.check_github_releases("winscp", "winscp")
-        if github_result and "error" not in github_result:
-            comparison = self.compare_versions(installed_version, github_result["latest_version"])
-            github_result["installed_version"] = installed_version
-            github_result["update_available"] = comparison < 0
-            return github_result
-        
-        # Fallback to web scraping only if BS4 is available
-        if BS4_AVAILABLE:
-            try:
-                response = requests.get("https://winscp.net/eng/downloads.php", timeout=10)
-                if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    # Look for version pattern
-                    version_match = re.search(r'WinSCP\s+(\d+\.\d+(?:\.\d+)?)', response.text)
-                    if version_match:
-                        version = version_match.group(1)
-                        comparison = self.compare_versions(installed_version, version)
-                        return {
-                            "name": "winscp",
-                            "installed_version": installed_version,
-                            "latest_version": version,
-                            "update_available": comparison < 0,
-                            "release_date": "Check website for details",
-                            "release_url": "https://winscp.net/eng/downloads.php",
-                            "last_checked": datetime.now().isoformat(),
-                            "status": "active",
-                            "source": "Official Website"
-                        }
-            except Exception as e:
-                print(f"Error checking WinSCP website: {e}")
-        
-        latest_version = "6.1.2"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "winscp",
-            "installed_version": installed_version,
-            "latest_version": f"{latest_version} (fallback)",
-            "update_available": comparison < 0,
-            "release_date": "Check website for details",
-            "release_url": "https://winscp.net/eng/downloads.php",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Static (fallback)"
-        }
-    
-    def check_filezilla_server(self):
-        """Check FileZilla Server version from GitHub"""
-        installed_version = self.installed_versions.get('filezilla-server', 'Unknown')
-        
-        # Try GitHub API first
-        github_result = self.check_github_releases("filezilla-project", "filezilla")
-        if github_result and "error" not in github_result:
-            # Extract server version from release name if possible
-            version = github_result["latest_version"]
-            # FileZilla releases are like "3.66.5" but we need server version
-            # Try alternative approach
-            
-        # Try FileZilla Server download page
-        if BS4_AVAILABLE:
-            try:
-                response = requests.get("https://filezilla-project.org/download.php?type=server", timeout=10)
-                if response.status_code == 200:
-                    # Look for multiple version patterns
-                    version_patterns = [
-                        r'The latest stable version of FileZilla Server is (\d+\.\d+(?:\.\d+)?)',
-                        r'FileZilla Server (\d+\.\d+(?:\.\d+)?)',
-                        r'Version (\d+\.\d+(?:\.\d+)?)'
-                    ]
-                    
-                    for pattern in version_patterns:
-                        version_match = re.search(pattern, response.text)
-                        if version_match:
-                            version = version_match.group(1)
-                            comparison = self.compare_versions(installed_version, version)
-                            return {
-                                "name": "filezilla-server",
-                                "installed_version": installed_version,
-                                "latest_version": version,
-                                "update_available": comparison < 0,
-                                "release_date": "Check website for details",
-                                "release_url": "https://filezilla-project.org/download.php?type=server",
-                                "last_checked": datetime.now().isoformat(),
-                                "status": "active",
-                                "source": "Official Website"
-                            }
-            except Exception as e:
-                print(f"Error checking FileZilla Server: {e}")
-        
-        # Fallback
-        latest_version = "1.10.3"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "filezilla-server",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check website for details",
-            "release_url": "https://filezilla-project.org/download.php?type=server",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Static (fallback)",
-            "error": "Failed to fetch live version"
-        }
-    
-    def check_firefox(self):
-        """Check Firefox version from Mozilla API"""
-        installed_version = self.installed_versions.get('firefox', 'Unknown')
-        
-        try:
-            # Mozilla provides a simple API for latest Firefox version
-            response = requests.get("https://product-details.mozilla.org/1.0/firefox_versions.json", timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                # Use LATEST_FIREFOX_VERSION for stable release
-                version = data.get('LATEST_FIREFOX_VERSION', '').replace('esr', '')
-                if version:
-                    comparison = self.compare_versions(installed_version, version)
-                    return {
-                        "name": "firefox",
-                        "installed_version": installed_version,
-                        "latest_version": version,
-                        "update_available": comparison < 0,
-                        "release_date": "Check website for details",
-                        "release_url": "https://www.mozilla.org/firefox/new/",
-                        "last_checked": datetime.now().isoformat(),
-                        "status": "active",
-                        "source": "Mozilla API"
-                    }
-        except Exception as e:
-            print(f"Error checking Firefox: {e}")
-        
-        # Fallback
-        latest_version = "128.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "firefox",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check website for details",
-            "release_url": "https://www.mozilla.org/firefox/new/",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Static (fallback)",
-            "error": "Failed to fetch live version"
-        }
-    
-    def check_lithnet_password_protection(self):
-        """Check Lithnet Password Protection version from GitHub"""
-        installed_version = self.installed_versions.get('lithnet-password-protection', 'Unknown')
-        
-        # Try GitHub API
-        github_result = self.check_github_releases("lithnet", "ad-password-protection")
-        if github_result and "error" not in github_result:
-            comparison = self.compare_versions(installed_version, github_result["latest_version"])
-            github_result["installed_version"] = installed_version
-            github_result["update_available"] = comparison < 0
-            github_result["name"] = "lithnet-password-protection"
-            return github_result
-        
-        # Fallback
-        latest_version = "1.0.0"
-        comparison = self.compare_versions(installed_version, latest_version)
-        return {
-            "name": "lithnet-password-protection",
-            "installed_version": installed_version,
-            "latest_version": latest_version,
-            "update_available": comparison < 0,
-            "release_date": "Check GitHub for details",
-            "release_url": "https://github.com/lithnet/ad-password-protection",
-            "last_checked": datetime.now().isoformat(),
-            "status": "active",
-            "source": "Static (fallback)",
-            "error": "Failed to fetch live version"
-        }
-    
-    def run_checks(self):
-        """Run software checks for all configured software"""
-        results = {}
-        
-        print("Checking PuTTY...")
-        results["putty"] = self.check_putty()
-        
-        print("Checking WinSCP...")
-        results["winscp"] = self.check_winscp()
-        
-        print("Checking FileZilla Server...")
-        results["filezilla-server"] = self.check_filezilla_server()
-        
-        print("Checking Firefox...")
-        results["firefox"] = self.check_firefox()
-        
-        print("Checking Lithnet Password Protection...")
-        results["lithnet-password-protection"] = self.check_lithnet_password_protection()
-        
-        # Save results to cache
-        cache.set('putty_winscp_data', results, timeout=3600)  # 1 hour cache
-        
-        print(f"Software check completed at {datetime.now()}")
-        return results
+    return jsonify({"message": "Software added successfully"}), 201
 
-# Global software checker instance
-software_checker = SoftwareChecker()
+@app.route('/api/software_versions/<int:index>', methods=['PUT'])
+def update_software_version(index):
+    """Aktualisiert eine bestehende Software-Version."""
+    updated_software = request.json
+    software_versions = cache.get('software_versions')
+    
+    if software_versions is None or index >= len(software_versions):
+        return jsonify({"error": "Software not found"}), 404
+    
+    software_versions[index] = updated_software
+    cache.set('software_versions', software_versions)
+    
+    return jsonify({"message": "Software updated successfully"})
 
-@app.route('/api/test_software')
-def test_software():
-    """Simple test endpoint to debug issues"""
-    try:
-        import sys
-        return jsonify({
-            "status": "OK",
-            "python_version": sys.version,
-            "available_modules": {
-                "requests": "requests" in sys.modules,
-                "beautifulsoup4": "bs4" in sys.modules,
-                "lxml": "lxml" in sys.modules
-            },
-            "test_data": {
-                "putty": {
-                    "name": "putty",
-                    "latest_version": "0.78",
-                    "last_checked": datetime.now().isoformat(),
-                    "status": "test",
-                    "source": "Test Data"
-                },
-                "winscp": {
-                    "name": "winscp", 
-                    "latest_version": "6.1.2",
-                    "last_checked": datetime.now().isoformat(),
-                    "status": "test",
-                    "source": "Test Data"
-                }
-            }
-        })
-    except Exception as e:
-        return jsonify({
-            "status": "ERROR",
-            "error": str(e),
-            "error_type": type(e).__name__
-        })
+@app.route('/api/software_versions/<int:index>', methods=['DELETE'])
+def delete_software_version(index):
+    """Löscht eine Software-Version."""
+    software_versions = cache.get('software_versions')
+    
+    if software_versions is None or index >= len(software_versions):
+        return jsonify({"error": "Software not found"}), 404
+    
+    del software_versions[index]
+    cache.set('software_versions', software_versions)
+    
+    return jsonify({"message": "Software deleted successfully"})
 
-@app.route('/api/putty_winscp_status')
-def get_putty_winscp_status():
-    """API endpoint for PuTTY and WinSCP status data"""
-    try:
-        # Try to get from cache first
-        cached_data = cache.get('putty_winscp_data')
-        if cached_data:
-            print("Returning cached software data")
-            return jsonify(cached_data)
-        
-        # Try a simple approach first - check if modules are available
-        try:
-            import requests
-            import bs4
-            print("Required modules available, attempting web scraping...")
-            data = software_checker.run_checks()
-            return jsonify(data)
-        except ImportError as import_error:
-            print(f"Module import failed: {import_error}")
-            # Return static fallback data when modules aren't available
-            fallback_data = {
-                "putty": {
-                    "name": "putty",
-                    "latest_version": "0.78",
-                    "release_date": "Check website for details",
-                    "release_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
-                    "last_checked": datetime.now().isoformat(),
-                    "status": "active",
-                    "source": "Static Data (Vercel Limitation)"
-                },
-                "winscp": {
-                    "name": "winscp",
-                    "latest_version": "6.1.2", 
-                    "release_date": "Check website for details",
-                    "release_url": "https://winscp.net/eng/downloads.php",
-                    "last_checked": datetime.now().isoformat(),
-                    "status": "active",
-                    "source": "Static Data (Vercel Limitation)"
-                }
-            }
-            # Cache the fallback data
-            cache.set('putty_winscp_data', fallback_data, timeout=3600)
-            return jsonify(fallback_data)
-            
-    except Exception as e:
-        print(f"Error getting PuTTY/WinSCP status: {e}")
-        # Return a fallback response instead of error
-        return jsonify({
-            "putty": {
-                "name": "putty",
-                "latest_version": "0.78 (Static)",
-                "error": f"Failed to fetch live version: {str(e)}",
-                "last_checked": datetime.now().isoformat(),
-                "source": "Fallback Data"
-            },
-            "winscp": {
-                "name": "winscp", 
-                "latest_version": "6.1.2 (Static)",
-                "error": f"Failed to fetch live version: {str(e)}",
-                "last_checked": datetime.now().isoformat(),
-                "source": "Fallback Data"
-            }
-        })
+# ============================================================================
+# API ROUTES - SYSTEM STATUS
+# ============================================================================
 
-@app.route('/api/refresh_putty_winscp', methods=['POST'])
-def refresh_putty_winscp():
-    """Manually trigger PuTTY and WinSCP check"""
-    try:
-        # Clear cache and run fresh check
-        cache.delete('putty_winscp_data')
-        print("Starting manual refresh of software data...")
-        data = software_checker.run_checks()
-        return jsonify({"status": "Refresh completed", "data": data})
-    except Exception as e:
-        print(f"Error refreshing PuTTY/WinSCP: {e}")
-        # Return partial data instead of error
-        return jsonify({
-            "status": "Refresh failed", 
-            "error": str(e),
-            "data": {
-                "putty": {
-                    "name": "putty",
-                    "error": f"Refresh failed: {str(e)}",
-                    "last_checked": datetime.now().isoformat()
-                },
-                "winscp": {
-                    "name": "winscp", 
-                    "error": f"Refresh failed: {str(e)}",
-                    "last_checked": datetime.now().isoformat()
-                }
-            }
-        })
-
-# API-Endpunkt für Systemstatus-Zusammenfassung
 @app.route('/api/system_status', methods=['GET'])
 def get_system_status():
+    """Gibt eine Zusammenfassung des gesamten System-Status zurück."""
+    
+    # Server-Versionen für Puppet Module
+    server_versions = {
+        'dsc-auditpolicydsc': '1.4.0-0-9',
+        'puppet-alternatives': '6.0.0',
+        'puppet-archive': '7.1.0',
+        'puppet-systemd': '8.2.0',
+        'puppetlabs-apt': '10.0.1',
+        'puppetlabs-facts': '1.7.0',
+        'puppetlabs-inifile': '6.2.0',
+        'puppetlabs-powershell': '6.0.2',
+        'puppetlabs-registry': '5.0.3',
+        'puppetlabs-stdlib': '9.7.0',
+        'saz-sudo': '9.0.2',
+        'puppet-ca_cert': '3.1.0'
+    }
+    
     # Puppet Module Status
     puppet_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     try:
-        modules = get_modules().json
+        modules_response = get_modules()
+        modules = modules_response.json
+        
         update_count = 0
         deprecated_count = 0
         
@@ -593,21 +333,7 @@ def get_system_status():
             if module.get('deprecated'):
                 deprecated_count += 1
             elif 'error' not in module:
-                server_version = {
-                    'dsc-auditpolicydsc': '1.4.0-0-9',
-                    'puppet-alternatives': '6.0.0',
-                    'puppet-archive': '8.1.0',
-                    'puppet-systemd': '9.1.0',
-                    'puppetlabs-apt': '11.1.0',
-                    'puppetlabs-facts': '1.7.0',
-                    'puppetlabs-inifile': '6.2.0',
-                    'puppetlabs-powershell': '6.0.2',
-                    'puppetlabs-registry': '5.0.3',
-                    'puppetlabs-stdlib': '9.7.0',
-                    'saz-sudo': '9.0.2',
-                    'puppet-ca_cert': '4.0.0'
-                }.get(module['name'], 'Unbekannt')
-                
+                server_version = server_versions.get(module['name'], 'Unbekannt')
                 if server_version != 'Unbekannt' and module.get('forgeVersion') != server_version:
                     update_count += 1
         
@@ -620,59 +346,132 @@ def get_system_status():
     except Exception as e:
         puppet_status = {"status": "Error", "details": str(e)}
     
+    # Website Status
+    website_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        websites = cache.get('website_status_all')
+        if websites:
+            online_count = sum(1 for site in websites if site['status'] == 'Online')
+            total_count = len(websites)
+            
+            if online_count == total_count:
+                website_status = {"status": "OK", "details": f"Alle {total_count} Websites online"}
+            elif online_count > 0:
+                website_status = {"status": "Warnung", "details": f"{online_count}/{total_count} Websites online"}
+            else:
+                website_status = {"status": "Kritisch", "details": "Alle Websites offline"}
+        else:
+            website_status = {"status": "Info", "details": "Monitoring verfügbar über /api/check_website"}
+    except Exception as e:
+        website_status = {"status": "Error", "details": str(e)}
+    
+    # SSL Status
+    ssl_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    try:
+        websites = cache.get('website_status_all')
+        if websites:
+            expiry_warning_days = 30
+            expiry_critical_days = 7
+            
+            warning_certs = []
+            critical_certs = []
+            
+            for site in websites:
+                if site.get('cert_expiry') and site['cert_expiry'] != 'Unknown':
+                    try:
+                        expiry_date = datetime.strptime(site['cert_expiry'], '%Y-%m-%d %H:%M:%S')
+                        days_until_expiry = (expiry_date - datetime.now()).days
+                        
+                        if days_until_expiry <= expiry_critical_days:
+                            critical_certs.append(site['url'])
+                        elif days_until_expiry <= expiry_warning_days:
+                            warning_certs.append(site['url'])
+                    except Exception as e:
+                        print(f"Error parsing cert expiry for {site['url']}: {e}")
+            
+            if critical_certs:
+                ssl_status = {
+                    "status": "Kritisch", 
+                    "details": f"{len(critical_certs)} Zertifikate laufen in <7 Tagen ab"
+                }
+            elif warning_certs:
+                ssl_status = {
+                    "status": "Warnung", 
+                    "details": f"{len(warning_certs)} Zertifikate laufen in <30 Tagen ab"
+                }
+            else:
+                ssl_status = {"status": "OK", "details": "Alle Zertifikate gültig"}
+        else:
+            ssl_status = {"status": "Info", "details": "SSL-Prüfung verfügbar"}
+    except Exception as e:
+        ssl_status = {"status": "Error", "details": str(e)}
     
     # EOL Status
     eol_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     try:
         warning_days = 365  # 1 Jahr Warnung
-        
         warning_systems = []
         expired_systems = []
         
-        # Debian
-        debian_data = get_eol_data('debian').json
-        for version in debian_data:
-            if 'eol' in version and version['eol']:
-                try:
-                    eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
-                    days_until_eol = (eol_date - datetime.now()).days
-                    
-                    if days_until_eol <= 0:
-                        expired_systems.append(f"Debian {version['cycle']}")
-                    elif days_until_eol <= warning_days:
-                        warning_systems.append(f"Debian {version['cycle']}")
-                except:
-                    pass
+        # Prüfe Debian
+        try:
+            debian_response = get_eol_data('debian')
+            debian_data = debian_response.json
+            
+            for version in debian_data:
+                if 'eol' in version and version['eol']:
+                    try:
+                        eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
+                        days_until_eol = (eol_date - datetime.now()).days
+                        
+                        if days_until_eol <= 0:
+                            expired_systems.append(f"Debian {version['cycle']}")
+                        elif days_until_eol <= warning_days:
+                            warning_systems.append(f"Debian {version['cycle']}")
+                    except:
+                        pass
+        except:
+            pass
         
-        # SLES
-        sles_data = get_eol_data('sles').json
-        for version in sles_data:
-            if 'eol' in version and version['eol']:
-                try:
-                    eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
-                    days_until_eol = (eol_date - datetime.now()).days
-                    
-                    if days_until_eol <= 0:
-                        expired_systems.append(f"SLES {version['cycle']}")
-                    elif days_until_eol <= warning_days:
-                        warning_systems.append(f"SLES {version['cycle']}")
-                except:
-                    pass
+        # Prüfe SLES
+        try:
+            sles_response = get_eol_data('sles')
+            sles_data = sles_response.json
+            
+            for version in sles_data:
+                if 'eol' in version and version['eol']:
+                    try:
+                        eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
+                        days_until_eol = (eol_date - datetime.now()).days
+                        
+                        if days_until_eol <= 0:
+                            expired_systems.append(f"SLES {version['cycle']}")
+                        elif days_until_eol <= warning_days:
+                            warning_systems.append(f"SLES {version['cycle']}")
+                    except:
+                        pass
+        except:
+            pass
         
-        # Windows Server
-        windows_data = get_eol_data('windows-server').json
-        for version in windows_data:
-            if 'eol' in version and version['eol'] and version['cycle'] in ['2019', '2022', '2025']:
-                try:
-                    eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
-                    days_until_eol = (eol_date - datetime.now()).days
-                    
-                    if days_until_eol <= 0:
-                        expired_systems.append(f"Windows Server {version['cycle']}")
-                    elif days_until_eol <= warning_days:
-                        warning_systems.append(f"Windows Server {version['cycle']}")
-                except:
-                    pass
+        # Prüfe Windows Server
+        try:
+            windows_response = get_eol_data('windows-server')
+            windows_data = windows_response.json
+            
+            for version in windows_data:
+                if 'eol' in version and version['eol'] and version['cycle'] in ['2019', '2022']:
+                    try:
+                        eol_date = datetime.strptime(version['eol'], '%Y-%m-%d')
+                        days_until_eol = (eol_date - datetime.now()).days
+                        
+                        if days_until_eol <= 0:
+                            expired_systems.append(f"Windows Server {version['cycle']}")
+                        elif days_until_eol <= warning_days:
+                            warning_systems.append(f"Windows Server {version['cycle']}")
+                    except:
+                        pass
+        except:
+            pass
         
         if expired_systems:
             eol_status = {"status": "Kritisch", "details": f"{len(expired_systems)} Systeme EOL erreicht"}
@@ -683,59 +482,29 @@ def get_system_status():
     except Exception as e:
         eol_status = {"status": "Error", "details": str(e)}
     
-    # Software Status (PuTTY/WinSCP)
-    software_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
-    try:
-        cached_data = cache.get('putty_winscp_data')
-        if cached_data:
-            error_count = 0
-            total_count = 0
-            for key, software in cached_data.items():
-                total_count += 1
-                if 'error' in software:
-                    error_count += 1
-            
-            if error_count == 0:
-                software_status = {"status": "OK", "details": f"Alle {total_count} Software-Tools erreichbar"}
-            elif error_count < total_count:
-                software_status = {"status": "Warnung", "details": f"{error_count}/{total_count} Software-Tools mit Fehlern"}
-            else:
-                software_status = {"status": "Kritisch", "details": "Alle Software-Tools fehlerhaft"}
-        else:
-            software_status = {"status": "Info", "details": "Noch keine Software-Daten geladen"}
-    except Exception as e:
-        software_status = {"status": "Error", "details": str(e)}
-
     return jsonify({
         "puppet": puppet_status,
+        "websites": website_status,
+        "ssl": ssl_status,
         "eol": eol_status,
-        "software": software_status,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
+
+# ============================================================================
+# MAIN ROUTES - HTML PAGES
+# ============================================================================
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
+    """Serve static HTML files and fallback to index.html for SPA routing."""
     if path != "" and os.path.exists(f"public/{path}"):
         return send_from_directory('public', path)
     else:
         return send_from_directory('public', 'index.html')
 
-def initialize_software_data():
-    """Initialize software data on startup"""
-    try:
-        print("Initializing software data...")
-        software_checker.run_checks()
-        print("Software data initialized successfully")
-    except Exception as e:
-        print(f"Error initializing software data: {e}")
-
-if __name__ == '__main__':
-    # Initialize software data on startup
-    initialize_software_data()
-    
-    # Für Development-Server
-    # In Produktion besser gunicorn mit worker_class='gevent' verwenden
-    app.run(debug=False, threaded=True)
-
-
+# ============================================================================
+# VERCEL EXPORT - WICHTIG FÜR DEPLOYMENT
+# ============================================================================
+# Die Flask App muss für Vercel exportiert werden.
+# Das if __name__ == '__main__' wird in der Serverless-Umgebung nicht ausgeführt.
