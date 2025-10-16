@@ -1,8 +1,11 @@
 import os
 import ssl
 import socket
+import OpenSSL
 import requests
-from datetime import datetime
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
@@ -11,11 +14,24 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 CORS(app)
 
-# Vereinfachte Cache-Konfiguration für Vercel Serverless
+# Verbesserte Cache-Konfiguration für Vercel
 cache_config = {
     "CACHE_TYPE": "SimpleCache",
     "CACHE_DEFAULT_TIMEOUT": 300
 }
+
+# Optionale Redis-Konfiguration, falls verfügbar
+if "REDIS_URL" in os.environ:
+    redis_url = os.environ["REDIS_URL"]
+    parsed_url = urlparse(redis_url)
+    if not parsed_url.scheme:
+        redis_url = f"redis://{redis_url}"
+    
+    cache_config.update({
+        "CACHE_TYPE": "redis",
+        "CACHE_REDIS_URL": redis_url,
+        "CACHE_OPTIONS": {"socket_timeout": 5, "socket_connect_timeout": 5}
+    })
 
 cache = Cache(app, config=cache_config)
 
@@ -39,77 +55,112 @@ def send_pushover_notification(message, title):
         print(f"Pushover notification error: {e}")
         return False
 
+# Websites zu überwachen mit initialem Status
+websites = [
+    {'url': 'https://www.spherea.de', 'status': 'Unknown', 'last_checked': 'Never', 'cert_expiry': 'Unknown'},
+    {'url': 'https://www.rapunzel.de', 'status': 'Unknown', 'last_checked': 'Never', 'cert_expiry': 'Unknown'}
+]
+
+# OPTIMIERUNG 1: Effiziente SSL-Zertifikatsprüfung
 def check_ssl_certificate(hostname, port=443, timeout=3.0):
-    """Prüft SSL-Zertifikat und gibt Ablaufdatum zurück."""
+    """Effizientere Methode zur Prüfung von SSL-Zertifikaten mit erweiterten Informationen."""
     try:
         context = ssl.create_default_context()
         with socket.create_connection((hostname, port), timeout=timeout) as sock:
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
-                expiry_date = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y GMT')
                 
-                # Zusätzliche Zertifikatsinformationen
-                cert_info = {
-                    'expiry': expiry_date.strftime('%Y-%m-%d %H:%M:%S'),
-                    'subject': dict(x[0] for x in cert['subject']),
-                    'issuer': dict(x[0] for x in cert['issuer'])
+                # Ablaufdatum
+                expiry_date = datetime.strptime(cert['notAfter'], '%b %d %H:%M:%S %Y GMT')
+                expiry_str = expiry_date.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Gültigkeitsbeginn
+                valid_from = datetime.strptime(cert['notBefore'], '%b %d %H:%M:%S %Y GMT')
+                valid_from_str = valid_from.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Issuer (Aussteller)
+                issuer = dict(x[0] for x in cert.get('issuer', []))
+                issuer_name = issuer.get('organizationName', issuer.get('commonName', 'Unknown'))
+                
+                # Subject (Inhaber)
+                subject = dict(x[0] for x in cert.get('subject', []))
+                subject_name = subject.get('commonName', 'Unknown')
+                
+                return {
+                    'expiry': expiry_str,
+                    'valid_from': valid_from_str,
+                    'issuer': issuer_name,
+                    'subject': subject_name
                 }
-                return cert_info
+                
     except Exception as e:
         print(f"SSL check error for {hostname}: {e}")
         return None
 
-def check_website(site_url):
-    """Prüft Website-Status und SSL-Zertifikat."""
-    site = {
-        'url': site_url,
-        'status': 'Unknown',
-        'last_checked': 'Never',
-        'cert_expiry': 'Unknown',
-        'certIssuer': None,
-        'certValidFrom': None
-    }
-    
+# OPTIMIERUNG 2: Parallelisierte Websiteprüfung
+def check_website(site):
+    """Optimierte Website-Prüfung mit schnellerem SSL-Check."""
     try:
-        response = requests.get(site_url, timeout=5, verify=True)
+        start_time = time.time()
+        response = requests.get(site['url'], timeout=5, verify=True)
+        response_time = time.time() - start_time
+        
         site['status'] = 'Online' if response.status_code == 200 else 'Offline'
+        site['response_time'] = round(response_time * 1000, 2)  # ms
         site['response_code'] = response.status_code
         
-        # SSL-Zertifikatsprüfung für HTTPS-URLs
-        if site_url.startswith('https://'):
-            hostname = urlparse(site_url).netloc
+        # Effizienterer SSL-Check
+        if site['url'].startswith('https://'):
+            hostname = urlparse(site['url']).netloc
             cert_info = check_ssl_certificate(hostname)
             
             if cert_info:
                 site['cert_expiry'] = cert_info['expiry']
-                site['certIssuer'] = cert_info['issuer'].get('organizationName', 'Unknown')
-                
-                # Valid From Datum aus dem Zertifikat
-                try:
-                    context = ssl.create_default_context()
-                    with socket.create_connection((hostname, 443), timeout=3.0) as sock:
-                        with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                            cert = ssock.getpeercert()
-                            valid_from = datetime.strptime(cert['notBefore'], '%b %d %H:%M:%S %Y GMT')
-                            site['certValidFrom'] = valid_from.strftime('%Y-%m-%d %H:%M:%S')
-                except:
-                    pass
+                site['certIssuer'] = cert_info['issuer']
+                site['certValidFrom'] = cert_info['valid_from']
+                site['certSubject'] = cert_info['subject']
+            else:
+                site['cert_expiry'] = 'Unknown'
+                site['certIssuer'] = None
+                site['certValidFrom'] = None
         
     except requests.RequestException as e:
         site['status'] = 'Offline'
         site['error'] = str(e)
         
-        # Benachrichtigung bei Offline-Status
-        cached_status = cache.get(f'website_status_{site_url}')
+        # Benachrichtigung nur bei Statusänderung
+        cached_status = cache.get(f'last_status_{site["url"]}')
         if cached_status != 'Offline':
             send_pushover_notification(
-                f"Website {site_url} ist offline! Fehler: {str(e)}", 
+                f"Website {site['url']} is offline! Error: {str(e)}", 
                 "Website Monitoring Alert"
             )
-        cache.set(f'website_status_{site_url}', 'Offline', timeout=300)
+            cache.set(f'last_status_{site["url"]}', 'Offline', timeout=3600)
     
     site['last_checked'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return site
+
+# OPTIMIERUNG 3: Parallelisierte Prüfung aller Websites
+def check_all_websites():
+    """
+    Parallelisierte Prüfung aller Websites mit ThreadPoolExecutor.
+    Wird bei Bedarf aufgerufen (on-demand für Serverless).
+    """
+    global websites
+    
+    # Kopie erstellen für Thread-Safety
+    sites_to_check = websites.copy()
+    
+    with ThreadPoolExecutor(max_workers=min(len(sites_to_check), 10)) as executor:
+        updated_sites = list(executor.map(check_website, sites_to_check))
+    
+    # Atomar aktualisieren
+    websites = updated_sites
+    
+    # Cache aktualisieren
+    cache.set('website_status', websites, timeout=60)
+    
+    return websites
 
 # ============================================================================
 # STATIC FILES ROUTES
@@ -139,30 +190,27 @@ def add_cache_headers(response):
 @app.route('/api/check_website', methods=['GET'])
 def get_website_status():
     """
-    Prüft den Status aller konfigurierten Websites.
+    Optimierter API-Endpunkt mit Cache und Fallback.
     Query Parameter: force=true für erzwungene Aktualisierung
     """
-    websites_to_check = [
-        'https://www.spherea.de',
-        'https://www.rapunzel.de'
-    ]
-    
-    # Prüfe Cache
-    cached_data = cache.get('website_status_all')
+    # Force-Parameter für sofortige Aktualisierung
     force_check = request.args.get('force', '').lower() == 'true'
     
-    if not force_check and cached_data:
-        return jsonify(cached_data)
+    # Prüfe, ob ein Cache-Wert existiert
+    cached_data = cache.get('website_status')
     
-    # Führe Checks durch
-    results = []
-    for url in websites_to_check:
-        results.append(check_website(url))
+    # Wenn kein Cache oder Force, führe neue Prüfung durch
+    if force_check or not cached_data:
+        try:
+            return jsonify(check_all_websites())
+        except Exception as e:
+            print(f"Error checking websites: {e}")
+            if cached_data:
+                return jsonify(cached_data)  # Fallback auf Cache
+            return jsonify(websites)  # Fallback auf letzte bekannte Werte
     
-    # Cache aktualisieren (60 Sekunden)
-    cache.set('website_status_all', results, timeout=60)
-    
-    return jsonify(results)
+    # Gib Cache zurück
+    return jsonify(cached_data)
 
 # ============================================================================
 # API ROUTES - PUPPET MODULES
@@ -349,10 +397,10 @@ def get_system_status():
     # Website Status
     website_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     try:
-        websites = cache.get('website_status_all')
-        if websites:
-            online_count = sum(1 for site in websites if site['status'] == 'Online')
-            total_count = len(websites)
+        cached_websites = cache.get('website_status')
+        if cached_websites:
+            online_count = sum(1 for site in cached_websites if site['status'] == 'Online')
+            total_count = len(cached_websites)
             
             if online_count == total_count:
                 website_status = {"status": "OK", "details": f"Alle {total_count} Websites online"}
@@ -368,15 +416,15 @@ def get_system_status():
     # SSL Status
     ssl_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     try:
-        websites = cache.get('website_status_all')
-        if websites:
+        cached_websites = cache.get('website_status')
+        if cached_websites:
             expiry_warning_days = 30
             expiry_critical_days = 7
             
             warning_certs = []
             critical_certs = []
             
-            for site in websites:
+            for site in cached_websites:
                 if site.get('cert_expiry') and site['cert_expiry'] != 'Unknown':
                     try:
                         expiry_date = datetime.strptime(site['cert_expiry'], '%Y-%m-%d %H:%M:%S')
@@ -506,5 +554,7 @@ def serve(path):
 # ============================================================================
 # VERCEL EXPORT - WICHTIG FÜR DEPLOYMENT
 # ============================================================================
-# Die Flask App muss für Vercel exportiert werden.
-# Das if __name__ == '__main__' wird in der Serverless-Umgebung nicht ausgeführt.
+# Die Flask App wird automatisch von Vercel als WSGI-App erkannt.
+# Kein if __name__ == '__main__' nötig für Vercel Serverless Functions.
+# Der Background-Thread-Code wurde entfernt, da er nicht serverless-kompatibel ist.
+# Website-Monitoring erfolgt jetzt on-demand über /api/check_website
