@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Tracker</title>
-    <meta name="description" content="System Tracker für Puppet Module Versionen, EOL Daten und Software Versionen">
+    <meta name="description" content="System Tracker für Puppet Module und Terraform Provider Versionen">
 
     <!-- Preconnect to important third-party domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -100,8 +100,7 @@
                 <div class="hidden lg:flex nav-links space-x-4">
                     <a href="/" class="text-primary font-medium hover:text-primary/80" aria-current="page">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
-                    <a href="/eol.html" class="text-foreground hover:text-primary">EOL Tracker</a>
-                    <a href="/software_versions.html" class="text-foreground hover:text-primary">Software</a>
+                    <a href="/terraform.html" class="text-foreground hover:text-primary">Terraform Provider</a>
                     <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
                         aria-label="Dark Mode umschalten">
                         Dark Mode
@@ -114,8 +113,7 @@
                 <div class="flex flex-col space-y-2">
                     <a href="/" class="text-primary font-medium hover:text-primary/80 py-2" aria-current="page">Home</a>
                     <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
-                    <a href="/eol.html" class="text-foreground hover:text-primary py-2">EOL Tracker</a>
-                    <a href="/software_versions.html" class="text-foreground hover:text-primary py-2">Software</a>
+                    <a href="/terraform.html" class="text-foreground hover:text-primary py-2">Terraform Provider</a>
                 </div>
             </div>
         </div>
@@ -140,16 +138,20 @@
             <p class="mb-4">Dieser Tracker bietet Informationen zu verschiedenen Aspekten unserer IT-Infrastruktur:</p>
             <ul class="list-disc list-inside mb-6 space-y-2">
                 <li>Puppet Module Versionen - Vergleich zwischen installierten und aktuellen Versionen</li>
-                <li>End-of-Life (EOL) Daten für unsere Systeme - Überwachung von Supportzeiträumen</li>
-                <li>Software Versionen - Überwachung von PuTTY und WinSCP Versionen</li>
+                <li>Terraform Provider Versionen - Überwachung von Provider-Updates aus der Terraform Registry</li>
             </ul>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <!-- Puppet Module Karte -->
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-6">
-                    <h2 class="text-xl font-semibold mb-4">Puppet Module</h2>
+                    <div class="flex items-center mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        <h2 class="text-xl font-semibold">Puppet Module</h2>
+                    </div>
                     <p class="mb-4">Verfolgen Sie den Status Ihrer Puppet Module und vergleichen Sie installierte mit
                         den neuesten Versionen auf Puppet Forge.</p>
                     <a href="/puppet.html" class="inline-flex items-center text-primary hover:underline">
@@ -162,30 +164,18 @@
                 </div>
             </div>
 
-            <!-- EOL Tracker Karte -->
+            <!-- Terraform Provider Karte -->
             <div class="bg-card rounded-lg shadow-md overflow-hidden">
                 <div class="p-6">
-                    <h2 class="text-xl font-semibold mb-4">EOL Tracker</h2>
-                    <p class="mb-4">Behalten Sie den Überblick über End-of-Life-Daten von Betriebssystemen wie Debian,
-                        SLES und Windows Server.</p>
-                    <a href="/eol.html" class="inline-flex items-center text-primary hover:underline">
-                        EOL Daten ansehen
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    <div class="flex items-center mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                         </svg>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Software Karte -->
-            <div class="bg-card rounded-lg shadow-md overflow-hidden">
-                <div class="p-6">
-                    <h2 class="text-xl font-semibold mb-4">Software</h2>
-                    <p class="mb-4">Überwachen Sie Versionen von PuTTY und WinSCP und erhalten Sie aktuelle
-                        Versionsinformationen.</p>
-                    <a href="/software_versions.html" class="inline-flex items-center text-primary hover:underline">
-                        Software Versionen ansehen
+                        <h2 class="text-xl font-semibold">Terraform Provider</h2>
+                    </div>
+                    <p class="mb-4">Überwachen Sie Ihre Terraform Provider und erhalten Sie Informationen über verfügbare Updates aus der Terraform Registry.</p>
+                    <a href="/terraform.html" class="inline-flex items-center text-primary hover:underline">
+                        Terraform Provider ansehen
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -257,40 +247,32 @@
             try {
                 // Lade die Daten vom System-Status-API-Endpunkt
                 const response = await fetch('/api/system_status');
-                
+
                 if (!response.ok) {
                     throw new Error('Fehler beim Laden der Systemstatus-Daten');
                 }
 
                 const data = await response.json();
-                
+
                 // Statusobjekt für Tabelle vorbereiten
                 const statusSummary = document.getElementById('statusSummary');
                 statusSummary.innerHTML = '';
 
                 // Puppet Module Status aktualisieren
                 const puppetRow = createStatusRow(
-                    'Puppet Module', 
-                    data.puppet.status, 
+                    'Puppet Module',
+                    data.puppet.status,
                     data.puppet.details
                 );
                 statusSummary.appendChild(puppetRow);
 
-                // EOL Systeme Status aktualisieren
-                const eolRow = createStatusRow(
-                    'EOL Systeme', 
-                    data.eol.status, 
-                    data.eol.details
+                // Terraform Provider Status aktualisieren
+                const terraformRow = createStatusRow(
+                    'Terraform Provider',
+                    data.terraform.status,
+                    data.terraform.details
                 );
-                statusSummary.appendChild(eolRow);
-
-                // Software Status aktualisieren
-                const softwareRow = createStatusRow(
-                    'Software', 
-                    data.software.status, 
-                    data.software.details
-                );
-                statusSummary.appendChild(softwareRow);
+                statusSummary.appendChild(terraformRow);
 
             } catch (error) {
                 console.error('Fehler beim Aktualisieren des Systemstatus:', error);
@@ -303,13 +285,16 @@
          */
         function createStatusRow(category, status, details) {
             const row = document.createElement('tr');
-            
+
             // CSS-Klasse und Farbe je nach Status bestimmen
             let statusClass = '';
-            
+
             switch (status) {
                 case 'OK':
                     statusClass = 'text-green-600';
+                    break;
+                case 'Info':
+                    statusClass = 'text-blue-600';
                     break;
                 case 'Warnung':
                     statusClass = 'text-yellow-600';
@@ -321,13 +306,13 @@
                 default:
                     statusClass = 'text-muted-foreground';
             }
-            
+
             row.innerHTML = `
                 <td class="px-4 py-2 border-t border-muted">${category}</td>
-                <td class="px-4 py-2 border-t border-muted"><span id="${category.toLowerCase().replace(' ', '')}Status" class="${statusClass}">${status}</span></td>
+                <td class="px-4 py-2 border-t border-muted"><span class="${statusClass} font-medium">${status}</span></td>
                 <td class="px-4 py-2 border-t border-muted">${details}</td>
             `;
-            
+
             return row;
         }
     </script>
