@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
@@ -15,6 +16,23 @@ cache_config = {
 }
 
 cache = Cache(app, config=cache_config)
+
+# ============================================================================
+# VERSION LOADING FROM JSON
+# ============================================================================
+
+def load_versions():
+    """Lädt die installierten Versionen aus versions.json."""
+    versions_file = os.path.join(os.path.dirname(__file__), 'versions.json')
+    try:
+        with open(versions_file, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Warning: {versions_file} not found, using empty defaults")
+        return {"puppet_modules": {}, "terraform_providers": {}}
+    except json.JSONDecodeError as e:
+        print(f"Error parsing versions.json: {e}")
+        return {"puppet_modules": {}, "terraform_providers": {}}
 
 # ============================================================================
 # STATIC FILES ROUTES
@@ -46,22 +64,9 @@ def add_cache_headers(response):
 def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
     try:
-        # Hardcoded installed versions - in production, these should come from a database or config file
-        # Updated to latest versions as of December 2025
-        installed_modules = {
-            'dsc-auditpolicydsc': '3.1.1',
-            'puppet-ca_cert': '4.0.0',
-            'puppet-alternatives': '6.0.0',
-            'puppet-archive': '8.1.0',
-            'puppet-systemd': '8.2.0',
-            'puppetlabs-apt': '11.1.0',
-            'puppetlabs-facts': '1.7.0',
-            'puppetlabs-inifile': '6.2.0',
-            'puppetlabs-powershell': '6.0.0',
-            'puppetlabs-registry': '5.0.3',
-            'puppetlabs-stdlib': '9.7.0',
-            'saz-sudo': '9.0.0'
-        }
+        # Lade installierte Versionen aus JSON-Datei
+        versions = load_versions()
+        installed_modules = versions.get('puppet_modules', {})
 
         result = []
         for module_name, installed_version in installed_modules.items():
@@ -121,18 +126,9 @@ def get_modules():
 def get_terraform_providers():
     """Ruft Terraform Provider Informationen von der Terraform Registry ab."""
     try:
-        # Hardcoded installed versions - in production, these should come from a database or config file
-        # Updated to latest versions as of December 2025
-        installed_providers = {
-            'hashicorp/azurerm': '4.54.0',
-            'hashicorp/random': '3.7.2',
-            'hashicorp/null': '3.2.4',
-            'hashicorp/local': '2.5.3',
-            'hashicorp/time': '0.13.1',
-            'hashicorp/tls': '4.1.0',
-            'hashicorp/azuread': '3.7.0',
-            'hashicorp/aws': '6.23.0',
-        }
+        # Lade installierte Versionen aus JSON-Datei
+        versions = load_versions()
+        installed_providers = versions.get('terraform_providers', {})
 
         result = []
         for provider_name, installed_version in installed_providers.items():
@@ -267,6 +263,16 @@ def get_system_status():
         "terraform": terraform_status,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
+
+# ============================================================================
+# API ROUTES - VERSION MANAGEMENT
+# ============================================================================
+
+@app.route('/api/versions', methods=['GET'])
+def get_versions():
+    """Gibt die aktuellen installierten Versionen aus versions.json zurück."""
+    versions = load_versions()
+    return jsonify(versions)
 
 # ============================================================================
 # MAIN ROUTES - HTML PAGES
