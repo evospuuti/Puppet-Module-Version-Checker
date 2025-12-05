@@ -14,14 +14,14 @@
     "saz-sudo": "9.0.2"
   },
   "terraform_providers": {
-    "hashicorp/azurerm": "4.54.0",
+    "hashicorp/azurerm": "4.55.0",
     "hashicorp/random": "3.7.2",
     "hashicorp/null": "3.2.4",
-    "hashicorp/local": "2.5.3",
+    "hashicorp/local": "2.6.1",
     "hashicorp/time": "0.13.1",
     "hashicorp/tls": "4.1.0",
     "hashicorp/azuread": "3.7.0",
-    "hashicorp/aws": "6.23.0"
+    "hashicorp/aws": "6.25.0"
   },
   "_meta": {
     "last_updated": "2025-12-05",
