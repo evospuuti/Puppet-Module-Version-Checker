@@ -1,320 +1,137 @@
 <!DOCTYPE html>
 <html lang="de">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Terraform Provider Tracker - System Tracker</title>
-    <meta name="description" content="Terraform Provider Versionsvergleich zwischen installierten und aktuellen Versionen">
-
-    <!-- Preconnect to important third-party domains -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdn.tailwindcss.com">
-
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        border: "hsl(var(--border))",
-                        input: "hsl(var(--input))",
-                        ring: "hsl(var(--ring))",
-                        background: "hsl(var(--background))",
-                        foreground: "hsl(var(--foreground))",
-                        primary: {
-                            DEFAULT: "hsl(var(--primary))",
-                            foreground: "hsl(var(--primary-foreground))",
-                        },
-                        secondary: {
-                            DEFAULT: "hsl(var(--secondary))",
-                            foreground: "hsl(var(--secondary-foreground))",
-                        },
-                        destructive: {
-                            DEFAULT: "hsl(var(--destructive))",
-                            foreground: "hsl(var(--destructive-foreground))",
-                        },
-                        muted: {
-                            DEFAULT: "hsl(var(--muted))",
-                            foreground: "hsl(var(--muted-foreground))",
-                        },
-                        accent: {
-                            DEFAULT: "hsl(var(--accent))",
-                            foreground: "hsl(var(--accent-foreground))",
-                        },
-                        popover: {
-                            DEFAULT: "hsl(var(--popover))",
-                            foreground: "hsl(var(--popover-foreground))",
-                        },
-                        card: {
-                            DEFAULT: "hsl(var(--card))",
-                            foreground: "hsl(var(--card-foreground))",
-                        },
-                    },
-                    borderRadius: {
-                        lg: "var(--radius)",
-                        md: "calc(var(--radius) - 2px)",
-                        sm: "calc(var(--radius) - 4px)",
-                    },
-                },
-            },
-        }
-    </script>
-
-    <!-- Gemeinsame Styles -->
+    <title>Terraform Provider - Version Tracker</title>
     <link rel="stylesheet" href="/styles/shared.css">
-
-    <!-- Asynchronously load fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
-        media="print" onload="this.media='all'">
 </head>
-
-<body class="bg-background text-foreground min-h-screen font-sans antialiased">
-    <!-- Accessibility skip link -->
-    <a href="#main-content"
-        class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
-        Zum Hauptinhalt springen
-    </a>
-
-    <!-- Navigation bar -->
-    <nav class="bg-card shadow-md sticky top-0 z-10" aria-label="Hauptnavigation">
-        <div class="container mx-auto px-6 py-3">
-            <div class="flex justify-between items-center">
-                <div class="text-xl font-semibold text-foreground">
-                    System Tracker
-                </div>
-
-                <!-- Mobile menu button -->
-                <button id="mobileNavToggle" class="lg:hidden" aria-label="Menü öffnen">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 6h16M4 12h16m-7 6h7" />
-                    </svg>
-                </button>
-
-                <!-- Desktop navigation -->
-                <div class="hidden lg:flex nav-links space-x-4">
-                    <a href="/" class="text-foreground hover:text-primary">Home</a>
-                    <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
-                    <a href="/terraform.html" class="text-primary font-medium hover:text-primary/80"
-                        aria-current="page">Terraform Provider</a>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
-                        aria-label="Dark Mode umschalten">
-                        Dark Mode
-                    </button>
-                </div>
-            </div>
-
-            <!-- Mobile navigation menu -->
-            <div class="nav-mobile hidden mt-4 lg:hidden">
-                <div class="flex flex-col space-y-2">
-                    <a href="/" class="text-foreground hover:text-primary py-2">Home</a>
-                    <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
-                    <a href="/terraform.html" class="text-primary font-medium hover:text-primary/80 py-2"
-                        aria-current="page">Terraform Provider</a>
-                </div>
+<body>
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">Version Tracker</a>
+            <div class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/puppet.html">Puppet Module</a>
+                <a href="/terraform.html" class="active">Terraform Provider</a>
+                <button onclick="toggleDarkMode()" class="btn btn-secondary">Theme</button>
             </div>
         </div>
     </nav>
 
-    <main id="main-content" class="container mx-auto p-6 page-transition">
-        <nav aria-label="Breadcrumb" class="mb-4">
-            <ol class="flex space-x-2 text-sm text-muted-foreground">
-                <li><a href="/" class="hover:text-primary">Home</a></li>
-                <li><span class="mx-2">/</span></li>
-                <li><a href="/terraform.html" class="hover:text-primary">Terraform Provider</a></li>
-            </ol>
-        </nav>
+    <main class="container">
+        <div class="page-header flex justify-between items-center">
+            <div>
+                <h1 class="page-title">Terraform Provider</h1>
+                <p class="page-subtitle">Vergleich mit Terraform Registry</p>
+            </div>
+            <button onclick="fetchProviders()" class="btn btn-primary">Aktualisieren</button>
+        </div>
 
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <h1 class="text-3xl font-bold">Terraform Provider Tracker</h1>
-            <div class="flex items-center space-x-2">
-                <p id="providerCounter" class="text-sm text-muted-foreground"></p>
-                <button onclick="fetchProviderData()"
-                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                    Versionen prüfen
-                </button>
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value text-success" id="currentCount">-</div>
+                <div class="stat-label">Aktuell</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value text-warning" id="outdatedCount">-</div>
+                <div class="stat-label">Updates</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value text-danger" id="errorCount">-</div>
+                <div class="stat-label">Fehler</div>
             </div>
         </div>
 
-        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
-            <p class="mb-4">
-                Diese Seite zeigt den Vergleich zwischen den installierten Terraform Providern und den
-                neuesten verfügbaren Versionen aus der
-                <a href="https://registry.terraform.io" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">Terraform Registry</a>.
-                Die Farbkodierung hilft schnell zu erkennen, welche Provider aktualisiert werden sollten:
-            </p>
-            <div class="flex flex-wrap gap-4 mb-4">
-                <div class="flex items-center">
-                    <div class="w-4 h-4 status-green mr-2 rounded"></div>
-                    <span>Aktuell</span>
-                </div>
-                <div class="flex items-center">
-                    <div class="w-4 h-4 status-yellow mr-2 rounded"></div>
-                    <span>Update verfügbar</span>
-                </div>
-                <div class="flex items-center">
-                    <div class="w-4 h-4 status-red mr-2 rounded"></div>
-                    <span>Fehler</span>
-                </div>
+        <div class="card">
+            <div class="flex justify-between items-center mb-2">
+                <input type="text" id="filter" class="filter-input" placeholder="Filter..." oninput="filterTable()">
+                <span class="text-muted" id="providerCount"></span>
             </div>
 
-            <div class="flex items-center my-4">
-                <label for="providerFilter" class="mr-2 text-sm font-medium">Filter:</label>
-                <input type="text" id="providerFilter" placeholder="Nach Provider filtern..."
-                    class="px-3 py-2 bg-background text-foreground border border-input rounded-md w-full max-w-md">
-            </div>
-
-            <div class="bg-card rounded-lg border border-border overflow-x-auto">
-                <table id="providerTable" class="w-full">
+            <div class="table-container">
+                <table>
                     <thead>
-                        <tr class="bg-muted">
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/80" data-sort="displayName">
-                                Provider <span class="sort-indicator"></span>
-                            </th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">
-                                Namespace
-                            </th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/80" data-sort="installedVersion">
-                                Installiert <span class="sort-indicator"></span>
-                            </th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/80" data-sort="latestVersion">
-                                Aktuell <span class="sort-indicator"></span>
-                            </th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/80" data-sort="status">
-                                Status <span class="sort-indicator"></span>
-                            </th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">
-                                Registry
-                            </th>
+                        <tr>
+                            <th>Provider</th>
+                            <th>Namespace</th>
+                            <th>Installiert</th>
+                            <th>Aktuell</th>
+                            <th>Status</th>
+                            <th>Link</th>
                         </tr>
                     </thead>
-                    <tbody id="providerList"></tbody>
+                    <tbody id="providerTable">
+                        <tr><td colspan="6" class="text-muted">Laden...</td></tr>
+                    </tbody>
                 </table>
-            </div>
-
-            <div id="loadingIndicator" class="flex justify-center items-center py-6 hidden">
-                <div class="spinner"></div>
-            </div>
-
-            <div id="errorMessage" class="text-error text-center hidden py-4"></div>
-
-            <div class="flex justify-between items-center mt-4">
-                <button onclick="fetchProviderData()"
-                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
-                    Aktualisieren
-                </button>
-
-                <button onclick="exportTableToCSV('providerTable', 'terraform_providers.csv')"
-                    class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors">
-                    Als CSV exportieren
-                </button>
-            </div>
-        </div>
-
-        <!-- Zusammenfassung -->
-        <div class="bg-card rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-semibold mb-4">Status Zusammenfassung</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div class="bg-card rounded-lg border border-border p-4">
-                    <h3 class="text-lg font-medium mb-2">Aktuell</h3>
-                    <div class="flex justify-between items-center">
-                        <span class="text-2xl font-bold" id="upToDateCount">-</span>
-                        <span class="text-success text-xl">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                    </div>
-                </div>
-                <div class="bg-card rounded-lg border border-border p-4">
-                    <h3 class="text-lg font-medium mb-2">Update verfügbar</h3>
-                    <div class="flex justify-between items-center">
-                        <span class="text-2xl font-bold" id="updateAvailableCount">-</span>
-                        <span class="text-warning text-xl">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                        </span>
-                    </div>
-                </div>
-                <div class="bg-card rounded-lg border border-border p-4">
-                    <h3 class="text-lg font-medium mb-2">Fehler</h3>
-                    <div class="flex justify-between items-center">
-                        <span class="text-2xl font-bold" id="errorCount">-</span>
-                        <span class="text-error text-xl">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </span>
-                    </div>
-                </div>
             </div>
         </div>
     </main>
 
-    <footer class="bg-card mt-12 py-6 border-t border-muted">
-        <div class="container mx-auto px-6">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <p class="text-muted-foreground text-sm">© 2025 System Tracker</p>
-                <div class="mt-4 md:mt-0">
-                    <button onclick="toggleDarkMode()" class="text-sm text-muted-foreground hover:text-foreground">
-                        Theme wechseln
-                    </button>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Toast Container für Benachrichtigungen -->
     <div class="toast-container"></div>
-
-    <!-- Gemeinsame Scripts -->
     <script src="/scripts/shared.js"></script>
-    <script src="/terraform.js"></script>
-
     <script>
-        // Funktion zum Exportieren der Tabelle als CSV
-        function exportTableToCSV(tableId, filename) {
-            const table = document.getElementById(tableId);
-            if (!table) return;
+        let providers = [];
 
-            const rows = Array.from(table.querySelectorAll('tr'));
+        document.addEventListener('DOMContentLoaded', fetchProviders);
 
-            const csvContent = rows.map(row => {
-                const cells = Array.from(row.querySelectorAll('th, td'));
-                return cells.map(cell => {
-                    // Text extrahieren, ohne HTML-Tags
-                    let content = cell.textContent.trim();
-                    // Wenn Anführungszeichen im Text sind, verdoppeln
-                    content = content.replace(/"/g, '""');
-                    // Text in Anführungszeichen einschließen
-                    return `"${content}"`;
-                }).join(',');
-            }).join('\n');
+        async function fetchProviders() {
+            try {
+                const res = await fetch('/api/terraform-providers');
+                providers = await res.json();
+                renderTable();
+                updateStats();
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.setAttribute('download', filename);
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        function renderTable() {
+            const filter = document.getElementById('filter').value.toLowerCase();
+            const filtered = providers.filter(p =>
+                p.name.toLowerCase().includes(filter) ||
+                p.displayName.toLowerCase().includes(filter)
+            );
 
-            showToast('CSV-Export erfolgreich', 'success');
+            document.getElementById('providerCount').textContent = `${filtered.length} Provider`;
+            document.getElementById('providerTable').innerHTML = filtered.map(p => `
+                <tr>
+                    <td><strong>${p.displayName}</strong></td>
+                    <td class="text-muted">${p.namespace}</td>
+                    <td><code>${p.installedVersion}</code></td>
+                    <td><code>${p.latestVersion}</code></td>
+                    <td><span class="badge ${getBadgeClass(p.status)}">${getStatusText(p.status)}</span></td>
+                    <td><a href="${p.url}" target="_blank">Registry</a></td>
+                </tr>
+            `).join('');
+        }
+
+        function filterTable() {
+            renderTable();
+        }
+
+        function updateStats() {
+            const current = providers.filter(p => p.status === 'current').length;
+            const outdated = providers.filter(p => p.status === 'outdated').length;
+            const errors = providers.filter(p => p.status === 'error').length;
+
+            document.getElementById('currentCount').textContent = current;
+            document.getElementById('outdatedCount').textContent = outdated;
+            document.getElementById('errorCount').textContent = errors;
+        }
+
+        function getBadgeClass(status) {
+            if (status === 'current') return 'badge-success';
+            if (status === 'outdated') return 'badge-warning';
+            return 'badge-danger';
+        }
+
+        function getStatusText(status) {
+            if (status === 'current') return 'Aktuell';
+            if (status === 'outdated') return 'Update';
+            return 'Fehler';
         }
     </script>
 </body>
-
 </html>

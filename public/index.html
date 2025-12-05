@@ -1,321 +1,115 @@
 <!DOCTYPE html>
 <html lang="de">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Tracker</title>
-    <meta name="description" content="System Tracker für Puppet Module und Terraform Provider Versionen">
-
-    <!-- Preconnect to important third-party domains -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdn.tailwindcss.com">
-
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        border: "hsl(var(--border))",
-                        input: "hsl(var(--input))",
-                        ring: "hsl(var(--ring))",
-                        background: "hsl(var(--background))",
-                        foreground: "hsl(var(--foreground))",
-                        primary: {
-                            DEFAULT: "hsl(var(--primary))",
-                            foreground: "hsl(var(--primary-foreground))",
-                        },
-                        secondary: {
-                            DEFAULT: "hsl(var(--secondary))",
-                            foreground: "hsl(var(--secondary-foreground))",
-                        },
-                        destructive: {
-                            DEFAULT: "hsl(var(--destructive))",
-                            foreground: "hsl(var(--destructive-foreground))",
-                        },
-                        muted: {
-                            DEFAULT: "hsl(var(--muted))",
-                            foreground: "hsl(var(--muted-foreground))",
-                        },
-                        accent: {
-                            DEFAULT: "hsl(var(--accent))",
-                            foreground: "hsl(var(--accent-foreground))",
-                        },
-                        popover: {
-                            DEFAULT: "hsl(var(--popover))",
-                            foreground: "hsl(var(--popover-foreground))",
-                        },
-                        card: {
-                            DEFAULT: "hsl(var(--card))",
-                            foreground: "hsl(var(--card-foreground))",
-                        },
-                    },
-                    borderRadius: {
-                        lg: "var(--radius)",
-                        md: "calc(var(--radius) - 2px)",
-                        sm: "calc(var(--radius) - 4px)",
-                    },
-                },
-            },
-        }
-    </script>
-
-    <!-- Gemeinsame Styles -->
+    <title>Version Tracker</title>
     <link rel="stylesheet" href="/styles/shared.css">
-
-    <!-- Asynchronously load fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"
-        media="print" onload="this.media='all'">
 </head>
-
-<body class="bg-background text-foreground min-h-screen font-sans antialiased">
-    <!-- Accessibility skip link -->
-    <a href="#main-content"
-        class="sr-only focus:not-sr-only focus:absolute focus:p-2 focus:bg-primary focus:text-primary-foreground">
-        Zum Hauptinhalt springen
-    </a>
-
-    <!-- Navigation bar -->
-    <nav class="bg-card shadow-md sticky top-0 z-10" aria-label="Hauptnavigation">
-        <div class="container mx-auto px-6 py-3">
-            <div class="flex justify-between items-center">
-                <div class="text-xl font-semibold text-foreground">
-                    System Tracker
-                </div>
-
-                <!-- Mobile menu button -->
-                <button id="mobileNavToggle" class="lg:hidden" aria-label="Menü öffnen">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 6h16M4 12h16m-7 6h7" />
-                    </svg>
-                </button>
-
-                <!-- Desktop navigation -->
-                <div class="hidden lg:flex nav-links space-x-4">
-                    <a href="/" class="text-primary font-medium hover:text-primary/80" aria-current="page">Home</a>
-                    <a href="/puppet.html" class="text-foreground hover:text-primary">Puppet Module</a>
-                    <a href="/terraform.html" class="text-foreground hover:text-primary">Terraform Provider</a>
-                    <button onclick="toggleDarkMode()" id="darkModeToggle" class="text-foreground hover:text-primary"
-                        aria-label="Dark Mode umschalten">
-                        Dark Mode
-                    </button>
-                </div>
-            </div>
-
-            <!-- Mobile navigation menu -->
-            <div class="nav-mobile hidden mt-4 lg:hidden">
-                <div class="flex flex-col space-y-2">
-                    <a href="/" class="text-primary font-medium hover:text-primary/80 py-2" aria-current="page">Home</a>
-                    <a href="/puppet.html" class="text-foreground hover:text-primary py-2">Puppet Module</a>
-                    <a href="/terraform.html" class="text-foreground hover:text-primary py-2">Terraform Provider</a>
-                </div>
+<body>
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">Version Tracker</a>
+            <div class="nav-links">
+                <a href="/" class="active">Dashboard</a>
+                <a href="/puppet.html">Puppet Module</a>
+                <a href="/terraform.html">Terraform Provider</a>
+                <button onclick="toggleDarkMode()" class="btn btn-secondary">Theme</button>
             </div>
         </div>
     </nav>
 
-    <main id="main-content" class="container mx-auto p-6 page-transition">
-        <nav aria-label="Breadcrumb" class="mb-4">
-            <ol class="flex space-x-2 text-sm text-muted-foreground">
-                <li><a href="/" class="hover:text-primary">Home</a></li>
-            </ol>
-        </nav>
+    <main class="container">
+        <div class="page-header">
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-subtitle">Status-Übersicht aller getrackten Versionen</p>
+        </div>
 
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold">Willkommen beim System Tracker</h1>
-            <div class="text-sm text-muted-foreground">
-                Letztes Update: <span id="lastUpdate">Loading...</span>
+        <div class="stats" id="stats">
+            <div class="stat">
+                <div class="stat-value" id="puppetStatus">-</div>
+                <div class="stat-label">Puppet Module</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="terraformStatus">-</div>
+                <div class="stat-label">Terraform Provider</div>
             </div>
         </div>
 
-        <div class="bg-card rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-xl font-semibold mb-4">Überblick</h2>
-            <p class="mb-4">Dieser Tracker bietet Informationen zu verschiedenen Aspekten unserer IT-Infrastruktur:</p>
-            <ul class="list-disc list-inside mb-6 space-y-2">
-                <li>Puppet Module Versionen - Vergleich zwischen installierten und aktuellen Versionen</li>
-                <li>Terraform Provider Versionen - Überwachung von Provider-Updates aus der Terraform Registry</li>
-            </ul>
+        <div class="card-grid">
+            <a href="/puppet.html" class="card" style="text-decoration: none; color: inherit;">
+                <h3 class="mb-1">Puppet Module</h3>
+                <p class="text-muted">Vergleich zwischen installierten und aktuellen Forge-Versionen</p>
+            </a>
+            <a href="/terraform.html" class="card" style="text-decoration: none; color: inherit;">
+                <h3 class="mb-1">Terraform Provider</h3>
+                <p class="text-muted">Vergleich zwischen installierten und aktuellen Registry-Versionen</p>
+            </a>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <!-- Puppet Module Karte -->
-            <div class="bg-card rounded-lg shadow-md overflow-hidden">
-                <div class="p-6">
-                    <div class="flex items-center mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                        <h2 class="text-xl font-semibold">Puppet Module</h2>
-                    </div>
-                    <p class="mb-4">Verfolgen Sie den Status Ihrer Puppet Module und vergleichen Sie installierte mit
-                        den neuesten Versionen auf Puppet Forge.</p>
-                    <a href="/puppet.html" class="inline-flex items-center text-primary hover:underline">
-                        Puppet Module Versionen ansehen
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </a>
-                </div>
-            </div>
-
-            <!-- Terraform Provider Karte -->
-            <div class="bg-card rounded-lg shadow-md overflow-hidden">
-                <div class="p-6">
-                    <div class="flex items-center mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-3 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                        <h2 class="text-xl font-semibold">Terraform Provider</h2>
-                    </div>
-                    <p class="mb-4">Überwachen Sie Ihre Terraform Provider und erhalten Sie Informationen über verfügbare Updates aus der Terraform Registry.</p>
-                    <a href="/terraform.html" class="inline-flex items-center text-primary hover:underline">
-                        Terraform Provider ansehen
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Status Summary -->
-        <div class="bg-card rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-semibold mb-4">System Status Zusammenfassung</h2>
-            <div class="overflow-x-auto">
-                <table class="w-full">
+        <div class="card">
+            <h3 class="mb-2">Status Details</h3>
+            <div class="table-container">
+                <table>
                     <thead>
-                        <tr class="bg-muted">
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Kategorie</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Details</th>
+                        <tr>
+                            <th>Kategorie</th>
+                            <th>Status</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
-                    <tbody id="statusSummary">
-                        <!-- Wird per JavaScript gefüllt -->
+                    <tbody id="statusTable">
+                        <tr><td colspan="3" class="text-muted">Laden...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </main>
 
-    <footer class="bg-card mt-12 py-6 border-t border-muted">
-        <div class="container mx-auto px-6">
-            <div class="flex flex-col md:flex-row justify-between items-center">
-                <p class="text-muted-foreground text-sm">© 2025 System Tracker</p>
-                <div class="mt-4 md:mt-0">
-                    <button onclick="toggleDarkMode()" class="text-sm text-muted-foreground hover:text-foreground">
-                        Theme wechseln
-                    </button>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Toast Container für Benachrichtigungen -->
     <div class="toast-container"></div>
-
-    <!-- Gemeinsame Scripts -->
     <script src="/scripts/shared.js"></script>
     <script>
-        // Spezifisches Skript für die Homepage
-        document.addEventListener('DOMContentLoaded', async () => {
+        document.addEventListener('DOMContentLoaded', loadStatus);
+
+        async function loadStatus() {
             try {
-                // Aktuelles Datum für "Letztes Update" setzen
-                const now = new Date();
-                document.getElementById('lastUpdate').textContent = now.toLocaleDateString('de-DE');
+                const res = await fetch('/api/system_status');
+                const data = await res.json();
 
-                // Status-Zusammenfassung laden
-                await updateStatusSummary();
+                document.getElementById('puppetStatus').textContent = data.puppet.status;
+                document.getElementById('puppetStatus').className = 'stat-value ' + getStatusClass(data.puppet.status);
 
-            } catch (error) {
-                console.error('Error loading homepage data:', error);
-                showToast('Fehler beim Laden der Daten', 'error');
-            }
-        });
+                document.getElementById('terraformStatus').textContent = data.terraform.status;
+                document.getElementById('terraformStatus').className = 'stat-value ' + getStatusClass(data.terraform.status);
 
-        /**
-         * Lädt die Systemstatus-Daten vom Server und aktualisiert die Anzeige
-         */
-        async function updateStatusSummary() {
-            try {
-                // Lade die Daten vom System-Status-API-Endpunkt
-                const response = await fetch('/api/system_status');
-
-                if (!response.ok) {
-                    throw new Error('Fehler beim Laden der Systemstatus-Daten');
-                }
-
-                const data = await response.json();
-
-                // Statusobjekt für Tabelle vorbereiten
-                const statusSummary = document.getElementById('statusSummary');
-                statusSummary.innerHTML = '';
-
-                // Puppet Module Status aktualisieren
-                const puppetRow = createStatusRow(
-                    'Puppet Module',
-                    data.puppet.status,
-                    data.puppet.details
-                );
-                statusSummary.appendChild(puppetRow);
-
-                // Terraform Provider Status aktualisieren
-                const terraformRow = createStatusRow(
-                    'Terraform Provider',
-                    data.terraform.status,
-                    data.terraform.details
-                );
-                statusSummary.appendChild(terraformRow);
-
-            } catch (error) {
-                console.error('Fehler beim Aktualisieren des Systemstatus:', error);
-                showToast('Fehler beim Laden des Systemstatus', 'error');
+                document.getElementById('statusTable').innerHTML = `
+                    <tr>
+                        <td>Puppet Module</td>
+                        <td><span class="badge ${getBadgeClass(data.puppet.status)}">${data.puppet.status}</span></td>
+                        <td>${data.puppet.details}</td>
+                    </tr>
+                    <tr>
+                        <td>Terraform Provider</td>
+                        <td><span class="badge ${getBadgeClass(data.terraform.status)}">${data.terraform.status}</span></td>
+                        <td>${data.terraform.details}</td>
+                    </tr>
+                `;
+            } catch (e) {
+                console.error(e);
             }
         }
 
-        /**
-         * Erstellt eine Tabellenzeile für den Systemstatus
-         */
-        function createStatusRow(category, status, details) {
-            const row = document.createElement('tr');
+        function getStatusClass(status) {
+            if (status === 'OK') return 'text-success';
+            if (status === 'Info') return 'text-warning';
+            return 'text-danger';
+        }
 
-            // CSS-Klasse und Farbe je nach Status bestimmen
-            let statusClass = '';
-
-            switch (status) {
-                case 'OK':
-                    statusClass = 'text-green-600';
-                    break;
-                case 'Info':
-                    statusClass = 'text-blue-600';
-                    break;
-                case 'Warnung':
-                    statusClass = 'text-yellow-600';
-                    break;
-                case 'Kritisch':
-                case 'Error':
-                    statusClass = 'text-red-600';
-                    break;
-                default:
-                    statusClass = 'text-muted-foreground';
-            }
-
-            row.innerHTML = `
-                <td class="px-4 py-2 border-t border-muted">${category}</td>
-                <td class="px-4 py-2 border-t border-muted"><span class="${statusClass} font-medium">${status}</span></td>
-                <td class="px-4 py-2 border-t border-muted">${details}</td>
-            `;
-
-            return row;
+        function getBadgeClass(status) {
+            if (status === 'OK') return 'badge-success';
+            if (status === 'Info') return 'badge-warning';
+            return 'badge-danger';
         }
     </script>
 </body>
-
 </html>
