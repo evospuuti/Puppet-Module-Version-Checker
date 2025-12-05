@@ -47,19 +47,20 @@ def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
     try:
         # Hardcoded installed versions - in production, these should come from a database or config file
+        # Updated to latest versions as of December 2025
         installed_modules = {
             'dsc-auditpolicydsc': '3.1.1',
-            'puppet-ca_cert': '2.4.0',
-            'puppet-alternatives': '4.1.0',
-            'puppet-archive': '6.1.1',
-            'puppet-systemd': '3.10.0',
-            'puppetlabs-apt': '8.5.0',
-            'puppetlabs-facts': '1.4.0',
-            'puppetlabs-inifile': '5.4.0',
-            'puppetlabs-powershell': '5.2.0',
-            'puppetlabs-registry': '4.1.0',
-            'puppetlabs-stdlib': '8.5.0',
-            'saz-sudo': '7.0.0'
+            'puppet-ca_cert': '4.0.0',
+            'puppet-alternatives': '6.0.0',
+            'puppet-archive': '8.1.0',
+            'puppet-systemd': '8.2.0',
+            'puppetlabs-apt': '11.1.0',
+            'puppetlabs-facts': '1.7.0',
+            'puppetlabs-inifile': '6.2.0',
+            'puppetlabs-powershell': '6.0.0',
+            'puppetlabs-registry': '5.0.3',
+            'puppetlabs-stdlib': '9.7.0',
+            'saz-sudo': '9.0.0'
         }
 
         result = []
@@ -121,15 +122,16 @@ def get_terraform_providers():
     """Ruft Terraform Provider Informationen von der Terraform Registry ab."""
     try:
         # Hardcoded installed versions - in production, these should come from a database or config file
+        # Updated to latest versions as of December 2025
         installed_providers = {
-            'hashicorp/azurerm': '3.85.0',
-            'hashicorp/random': '3.5.1',
-            'hashicorp/null': '3.2.1',
-            'hashicorp/local': '2.4.0',
-            'hashicorp/time': '0.9.1',
-            'hashicorp/tls': '4.0.4',
-            'hashicorp/azuread': '2.45.0',
-            'hashicorp/aws': '5.30.0',
+            'hashicorp/azurerm': '4.54.0',
+            'hashicorp/random': '3.7.2',
+            'hashicorp/null': '3.2.4',
+            'hashicorp/local': '2.5.3',
+            'hashicorp/time': '0.13.1',
+            'hashicorp/tls': '4.1.0',
+            'hashicorp/azuread': '3.7.0',
+            'hashicorp/aws': '6.23.0',
         }
 
         result = []
