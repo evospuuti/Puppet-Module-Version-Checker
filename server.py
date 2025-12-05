@@ -60,7 +60,7 @@ def add_cache_headers(response):
 # ============================================================================
 
 @app.route('/api/modules', methods=['GET'])
-@cache.cached(timeout=3600)  # 1 Stunde Cache
+@cache.cached(timeout=300)  # 5 Minuten Cache
 def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
     try:
@@ -122,7 +122,7 @@ def get_modules():
 # ============================================================================
 
 @app.route('/api/terraform-providers', methods=['GET'])
-@cache.cached(timeout=3600)  # 1 Stunde Cache
+@cache.cached(timeout=300)  # 5 Minuten Cache
 def get_terraform_providers():
     """Ruft Terraform Provider Informationen von der Terraform Registry ab."""
     try:
