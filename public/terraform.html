@@ -18,6 +18,7 @@
     <nav class="nav">
         <div class="nav-container">
             <a href="/" class="nav-brand">Version Tracker</a>
+            <button class="nav-toggle" onclick="toggleNav()" aria-label="Menü">&#9776;</button>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
@@ -70,14 +71,13 @@
                         </tr>
                     </thead>
                     <tbody id="providerTable">
-                        <tr><td colspan="6" class="text-muted">Laden...</td></tr>
+                        <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
     </main>
 
-    <div class="toast-container"></div>
     <script src="/scripts/shared.js"></script>
     <script>
         let providers = [];
@@ -85,20 +85,19 @@
         document.addEventListener('DOMContentLoaded', fetchProviders);
 
         async function fetchProviders() {
+            document.getElementById('providerTable').innerHTML =
+                '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>';
             try {
                 const res = await fetch('/api/terraform-providers');
+                if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
                 providers = await res.json();
                 renderTable();
                 updateStats();
             } catch (e) {
                 console.error(e);
+                document.getElementById('providerTable').innerHTML =
+                    '<tr><td colspan="6"><div class="error-message">Fehler beim Laden: ' + escapeHtml(e.message) + '</div></td></tr>';
             }
-        }
-
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
         }
 
         function renderTable() {
