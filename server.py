@@ -1,21 +1,66 @@
 import os
 import json
-import requests
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
+import requests
+
+# ============================================================================
+# APP SETUP
+# ============================================================================
 
 app = Flask(__name__)
-CORS(app)
+
+# CORS nur für eigene Origin erlauben (Vercel-Domain + lokale Entwicklung)
+CORS(app, origins=[
+    'https://puppet-module-version-checker.vercel.app',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000'
+])
 
 # Cache-Konfiguration für Vercel - nur SimpleCache verwenden
-cache_config = {
+cache = Cache(app, config={
     "CACHE_TYPE": "SimpleCache",
     "CACHE_DEFAULT_TIMEOUT": 300
-}
+})
 
-cache = Cache(app, config=cache_config)
+# HTTP Session für Connection-Pooling (wiederverwendet TCP-Verbindungen)
+http_session = requests.Session()
+http_session.headers.update({'User-Agent': 'Version-Checker/2.0'})
+
+# Logging
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# SECURITY HEADERS
+# ============================================================================
+
+@app.after_request
+def add_security_headers(response):
+    """Sicherheits- und Cache-Header für alle Responses."""
+    # Security Headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    )
+
+    # Cache-Header für statische Dateien
+    if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+
+    return response
 
 # ============================================================================
 # VERSION LOADING FROM JSON
@@ -28,143 +73,144 @@ def load_versions():
         with open(versions_file, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"Warning: {versions_file} not found, using empty defaults")
+        logger.warning("versions.json not found, using empty defaults")
         return {"puppet_modules": {}, "terraform_providers": {}}
     except json.JSONDecodeError as e:
-        print(f"Error parsing versions.json: {e}")
+        logger.error("Error parsing versions.json: %s", e)
         return {"puppet_modules": {}, "terraform_providers": {}}
 
 # ============================================================================
-# DATA FETCHING LOGIC (cached separately from routes)
+# EINZELNE MODULE/PROVIDER ABRUFEN (für parallele Ausführung)
+# ============================================================================
+
+def _fetch_single_module(module_name, installed_version):
+    """Holt Daten für ein einzelnes Puppet-Modul vom Forge."""
+    module_data = {
+        'name': module_name,
+        'serverVersion': installed_version,
+        'forgeVersion': 'N/A',
+        'status': 'unknown',
+        'deprecated': False,
+        'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
+    }
+
+    try:
+        url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
+        response = http_session.get(url, timeout=10)
+
+        if response.status_code == 200:
+            data = response.json()
+
+            if 'current_release' in data and 'version' in data['current_release']:
+                forge_version = data['current_release']['version']
+                module_data['forgeVersion'] = forge_version
+                module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
+
+            module_data['deprecated'] = data.get('deprecated_at') is not None
+        else:
+            logger.warning("Forge API status %d for %s", response.status_code, module_name)
+            module_data['status'] = 'error'
+            module_data['error'] = f"HTTP {response.status_code}"
+
+    except requests.Timeout:
+        module_data['status'] = 'error'
+        module_data['error'] = 'Timeout'
+    except requests.RequestException:
+        module_data['status'] = 'error'
+        module_data['error'] = 'Verbindungsfehler'
+    except Exception:
+        logger.exception("Unexpected error for module %s", module_name)
+        module_data['status'] = 'error'
+        module_data['error'] = 'Unerwarteter Fehler'
+
+    return module_data
+
+
+def _fetch_single_provider(provider_name, installed_version):
+    """Holt Daten für einen einzelnen Terraform-Provider von der Registry."""
+    namespace, name = provider_name.split('/')
+
+    provider_data = {
+        'name': provider_name,
+        'displayName': name,
+        'namespace': namespace,
+        'installedVersion': installed_version,
+        'latestVersion': 'N/A',
+        'status': 'unknown',
+        'url': f'https://registry.terraform.io/providers/{provider_name}'
+    }
+
+    try:
+        url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
+        response = http_session.get(url, timeout=10, headers={'Accept': 'application/json'})
+
+        if response.status_code == 200:
+            data = response.json()
+
+            if 'version' in data:
+                latest_version = data['version']
+                provider_data['latestVersion'] = latest_version
+
+                installed_clean = installed_version.lstrip('v')
+                latest_clean = latest_version.lstrip('v')
+
+                provider_data['status'] = 'current' if installed_clean == latest_clean else 'outdated'
+
+            if 'description' in data:
+                provider_data['description'] = data['description']
+            if 'source' in data:
+                provider_data['source'] = data['source']
+            if 'published_at' in data:
+                provider_data['publishedAt'] = data['published_at']
+
+        else:
+            logger.warning("Registry API status %d for %s", response.status_code, provider_name)
+            provider_data['status'] = 'error'
+            provider_data['error'] = f"HTTP {response.status_code}"
+
+    except requests.Timeout:
+        provider_data['status'] = 'error'
+        provider_data['error'] = 'Timeout'
+    except requests.RequestException:
+        provider_data['status'] = 'error'
+        provider_data['error'] = 'Verbindungsfehler'
+    except Exception:
+        logger.exception("Unexpected error for provider %s", provider_name)
+        provider_data['status'] = 'error'
+        provider_data['error'] = 'Unerwarteter Fehler'
+
+    return provider_data
+
+# ============================================================================
+# DATA FETCHING LOGIC (cached, parallel)
 # ============================================================================
 
 @cache.cached(timeout=300, key_prefix='puppet_modules_data')
 def fetch_modules_data():
-    """Holt Puppet Module Daten vom Puppet Forge (mit Cache)."""
+    """Holt alle Puppet Module Daten parallel vom Forge (mit Cache)."""
     versions = load_versions()
     installed_modules = versions.get('puppet_modules', {})
 
-    result = []
-    for module_name, installed_version in installed_modules.items():
-        module_data = {
-            'name': module_name,
-            'serverVersion': installed_version,
-            'forgeVersion': 'N/A',
-            'status': 'unknown',
-            'deprecated': False,
-            'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
-        }
-
-        try:
-            url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
-            response = requests.get(url, timeout=15, headers={'User-Agent': 'Puppet-Version-Checker/1.0'})
-
-            if response.status_code == 200:
-                data = response.json()
-
-                if 'current_release' in data and 'version' in data['current_release']:
-                    forge_version = data['current_release']['version']
-                    module_data['forgeVersion'] = forge_version
-                    module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
-
-                module_data['deprecated'] = data.get('deprecated_at') is not None
-            else:
-                print(f"API returned status {response.status_code} for {module_name}")
-                module_data['status'] = 'error'
-                module_data['error'] = f"API returned status {response.status_code}"
-
-        except requests.Timeout:
-            print(f"Timeout fetching module {module_name}")
-            module_data['status'] = 'error'
-            module_data['error'] = 'Request timeout'
-        except requests.RequestException as e:
-            print(f"Error fetching module {module_name}: {str(e)}")
-            module_data['status'] = 'error'
-            module_data['error'] = str(e)
-        except Exception as e:
-            print(f"Unexpected error for module {module_name}: {str(e)}")
-            module_data['status'] = 'error'
-            module_data['error'] = f"Unexpected error: {str(e)}"
-
-        result.append(module_data)
-
-    return result
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = [
+            executor.submit(_fetch_single_module, name, version)
+            for name, version in installed_modules.items()
+        ]
+        return [f.result() for f in futures]
 
 
 @cache.cached(timeout=300, key_prefix='terraform_providers_data')
 def fetch_terraform_data():
-    """Holt Terraform Provider Daten von der Terraform Registry (mit Cache)."""
+    """Holt alle Terraform Provider Daten parallel von der Registry (mit Cache)."""
     versions = load_versions()
     installed_providers = versions.get('terraform_providers', {})
 
-    result = []
-    for provider_name, installed_version in installed_providers.items():
-        namespace, name = provider_name.split('/')
-
-        provider_data = {
-            'name': provider_name,
-            'displayName': name,
-            'namespace': namespace,
-            'installedVersion': installed_version,
-            'latestVersion': 'N/A',
-            'status': 'unknown',
-            'url': f'https://registry.terraform.io/providers/{provider_name}'
-        }
-
-        try:
-            # Terraform Registry API v1
-            url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
-            response = requests.get(url, timeout=15, headers={
-                'User-Agent': 'Terraform-Provider-Checker/1.0',
-                'Accept': 'application/json'
-            })
-
-            if response.status_code == 200:
-                data = response.json()
-
-                # Die neueste Version aus der API holen
-                if 'version' in data:
-                    latest_version = data['version']
-                    provider_data['latestVersion'] = latest_version
-
-                    # Versionen vergleichen (ohne 'v' Präfix falls vorhanden)
-                    installed_clean = installed_version.lstrip('v')
-                    latest_clean = latest_version.lstrip('v')
-
-                    if installed_clean == latest_clean:
-                        provider_data['status'] = 'current'
-                    else:
-                        provider_data['status'] = 'outdated'
-
-                # Zusätzliche Informationen
-                if 'description' in data:
-                    provider_data['description'] = data['description']
-                if 'source' in data:
-                    provider_data['source'] = data['source']
-                if 'published_at' in data:
-                    provider_data['publishedAt'] = data['published_at']
-
-            else:
-                print(f"API returned status {response.status_code} for {provider_name}")
-                provider_data['status'] = 'error'
-                provider_data['error'] = f"API returned status {response.status_code}"
-
-        except requests.Timeout:
-            print(f"Timeout fetching provider {provider_name}")
-            provider_data['status'] = 'error'
-            provider_data['error'] = 'Request timeout'
-        except requests.RequestException as e:
-            print(f"Error fetching provider {provider_name}: {str(e)}")
-            provider_data['status'] = 'error'
-            provider_data['error'] = str(e)
-        except Exception as e:
-            print(f"Unexpected error for provider {provider_name}: {str(e)}")
-            provider_data['status'] = 'error'
-            provider_data['error'] = f"Unexpected error: {str(e)}"
-
-        result.append(provider_data)
-
-    return result
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = [
+            executor.submit(_fetch_single_provider, name, version)
+            for name, version in installed_providers.items()
+        ]
+        return [f.result() for f in futures]
 
 # ============================================================================
 # STATIC FILES ROUTES
@@ -180,13 +226,6 @@ def serve_scripts(filename):
     """Serve JavaScript files."""
     return send_from_directory('public/scripts', filename)
 
-@app.after_request
-def add_cache_headers(response):
-    """Add cache headers for static files."""
-    if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
-        response.headers['Cache-Control'] = 'public, max-age=86400'  # 1 day
-    return response
-
 # ============================================================================
 # API ROUTES - PUPPET MODULES
 # ============================================================================
@@ -197,9 +236,9 @@ def get_modules():
     try:
         result = fetch_modules_data()
         return jsonify(result)
-    except Exception as e:
-        print(f"Critical error in get_modules: {str(e)}")
-        return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+    except Exception:
+        logger.exception("Critical error in get_modules")
+        return jsonify({'error': 'Serverfehler beim Laden der Module'}), 500
 
 # ============================================================================
 # API ROUTES - TERRAFORM PROVIDERS
@@ -211,9 +250,9 @@ def get_terraform_providers():
     try:
         result = fetch_terraform_data()
         return jsonify(result)
-    except Exception as e:
-        print(f"Critical error in get_terraform_providers: {str(e)}")
-        return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+    except Exception:
+        logger.exception("Critical error in get_terraform_providers")
+        return jsonify({'error': 'Serverfehler beim Laden der Provider'}), 500
 
 # ============================================================================
 # API ROUTES - SYSTEM STATUS
@@ -243,8 +282,9 @@ def get_system_status():
             puppet_status = {"status": "Info", "details": f"{outdated_count} Updates verfügbar"}
         else:
             puppet_status = {"status": "OK", "details": "Alle Module aktuell"}
-    except Exception as e:
-        puppet_status = {"status": "Error", "details": str(e)}
+    except Exception:
+        logger.exception("Error fetching puppet status")
+        puppet_status = {"status": "Error", "details": "Fehler beim Laden"}
 
     # Terraform Provider Status
     terraform_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
@@ -266,8 +306,9 @@ def get_system_status():
             terraform_status = {"status": "Info", "details": f"{outdated_count} Updates verfügbar"}
         else:
             terraform_status = {"status": "OK", "details": "Alle Provider aktuell"}
-    except Exception as e:
-        terraform_status = {"status": "Error", "details": str(e)}
+    except Exception:
+        logger.exception("Error fetching terraform status")
+        terraform_status = {"status": "Error", "details": "Fehler beim Laden"}
 
     return jsonify({
         "puppet": puppet_status,
