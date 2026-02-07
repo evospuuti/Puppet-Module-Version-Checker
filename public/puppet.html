@@ -86,6 +86,12 @@
             }
         }
 
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         function renderTable() {
             const filter = document.getElementById('filter').value.toLowerCase();
             const filtered = modules.filter(m =>
@@ -96,11 +102,11 @@
             document.getElementById('moduleCount').textContent = `${filtered.length} Module`;
             document.getElementById('moduleTable').innerHTML = filtered.map(m => `
                 <tr>
-                    <td><strong>${m.name}</strong></td>
-                    <td><code>${m.serverVersion}</code></td>
-                    <td><code>${m.forgeVersion}</code></td>
+                    <td><strong>${escapeHtml(m.name)}</strong></td>
+                    <td><code>${escapeHtml(m.serverVersion)}</code></td>
+                    <td><code>${escapeHtml(m.forgeVersion)}</code></td>
                     <td><span class="badge ${getBadgeClass(m)}">${getStatusText(m)}</span></td>
-                    <td><a href="${m.url}" target="_blank">Forge</a></td>
+                    <td><a href="${escapeHtml(m.url)}" target="_blank" rel="noopener noreferrer">Forge</a></td>
                 </tr>
             `).join('');
         }

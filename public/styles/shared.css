@@ -173,7 +173,7 @@ tr:hover {
 
 .badge-warning {
     background: rgba(255, 193, 7, 0.1);
-    color: #d39e00;
+    color: var(--warning);
 }
 
 .badge-danger {
@@ -312,7 +312,7 @@ a:hover {
 .hidden { display: none; }
 .text-muted { color: var(--text-muted); }
 .text-success { color: var(--success); }
-.text-warning { color: #d39e00; }
+.text-warning { color: var(--warning); }
 .text-danger { color: var(--danger); }
 .mb-1 { margin-bottom: 0.5rem; }
 .mb-2 { margin-bottom: 1rem; }

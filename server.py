@@ -35,6 +35,138 @@ def load_versions():
         return {"puppet_modules": {}, "terraform_providers": {}}
 
 # ============================================================================
+# DATA FETCHING LOGIC (cached separately from routes)
+# ============================================================================
+
+@cache.cached(timeout=300, key_prefix='puppet_modules_data')
+def fetch_modules_data():
+    """Holt Puppet Module Daten vom Puppet Forge (mit Cache)."""
+    versions = load_versions()
+    installed_modules = versions.get('puppet_modules', {})
+
+    result = []
+    for module_name, installed_version in installed_modules.items():
+        module_data = {
+            'name': module_name,
+            'serverVersion': installed_version,
+            'forgeVersion': 'N/A',
+            'status': 'unknown',
+            'deprecated': False,
+            'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
+        }
+
+        try:
+            url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
+            response = requests.get(url, timeout=15, headers={'User-Agent': 'Puppet-Version-Checker/1.0'})
+
+            if response.status_code == 200:
+                data = response.json()
+
+                if 'current_release' in data and 'version' in data['current_release']:
+                    forge_version = data['current_release']['version']
+                    module_data['forgeVersion'] = forge_version
+                    module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
+
+                module_data['deprecated'] = data.get('deprecated_at') is not None
+            else:
+                print(f"API returned status {response.status_code} for {module_name}")
+                module_data['status'] = 'error'
+                module_data['error'] = f"API returned status {response.status_code}"
+
+        except requests.Timeout:
+            print(f"Timeout fetching module {module_name}")
+            module_data['status'] = 'error'
+            module_data['error'] = 'Request timeout'
+        except requests.RequestException as e:
+            print(f"Error fetching module {module_name}: {str(e)}")
+            module_data['status'] = 'error'
+            module_data['error'] = str(e)
+        except Exception as e:
+            print(f"Unexpected error for module {module_name}: {str(e)}")
+            module_data['status'] = 'error'
+            module_data['error'] = f"Unexpected error: {str(e)}"
+
+        result.append(module_data)
+
+    return result
+
+
+@cache.cached(timeout=300, key_prefix='terraform_providers_data')
+def fetch_terraform_data():
+    """Holt Terraform Provider Daten von der Terraform Registry (mit Cache)."""
+    versions = load_versions()
+    installed_providers = versions.get('terraform_providers', {})
+
+    result = []
+    for provider_name, installed_version in installed_providers.items():
+        namespace, name = provider_name.split('/')
+
+        provider_data = {
+            'name': provider_name,
+            'displayName': name,
+            'namespace': namespace,
+            'installedVersion': installed_version,
+            'latestVersion': 'N/A',
+            'status': 'unknown',
+            'url': f'https://registry.terraform.io/providers/{provider_name}'
+        }
+
+        try:
+            # Terraform Registry API v1
+            url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
+            response = requests.get(url, timeout=15, headers={
+                'User-Agent': 'Terraform-Provider-Checker/1.0',
+                'Accept': 'application/json'
+            })
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Die neueste Version aus der API holen
+                if 'version' in data:
+                    latest_version = data['version']
+                    provider_data['latestVersion'] = latest_version
+
+                    # Versionen vergleichen (ohne 'v' Präfix falls vorhanden)
+                    installed_clean = installed_version.lstrip('v')
+                    latest_clean = latest_version.lstrip('v')
+
+                    if installed_clean == latest_clean:
+                        provider_data['status'] = 'current'
+                    else:
+                        provider_data['status'] = 'outdated'
+
+                # Zusätzliche Informationen
+                if 'description' in data:
+                    provider_data['description'] = data['description']
+                if 'source' in data:
+                    provider_data['source'] = data['source']
+                if 'published_at' in data:
+                    provider_data['publishedAt'] = data['published_at']
+
+            else:
+                print(f"API returned status {response.status_code} for {provider_name}")
+                provider_data['status'] = 'error'
+                provider_data['error'] = f"API returned status {response.status_code}"
+
+        except requests.Timeout:
+            print(f"Timeout fetching provider {provider_name}")
+            provider_data['status'] = 'error'
+            provider_data['error'] = 'Request timeout'
+        except requests.RequestException as e:
+            print(f"Error fetching provider {provider_name}: {str(e)}")
+            provider_data['status'] = 'error'
+            provider_data['error'] = str(e)
+        except Exception as e:
+            print(f"Unexpected error for provider {provider_name}: {str(e)}")
+            provider_data['status'] = 'error'
+            provider_data['error'] = f"Unexpected error: {str(e)}"
+
+        result.append(provider_data)
+
+    return result
+
+# ============================================================================
 # STATIC FILES ROUTES
 # ============================================================================
 
@@ -60,58 +192,10 @@ def add_cache_headers(response):
 # ============================================================================
 
 @app.route('/api/modules', methods=['GET'])
-@cache.cached(timeout=300)  # 5 Minuten Cache
 def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
     try:
-        # Lade installierte Versionen aus JSON-Datei
-        versions = load_versions()
-        installed_modules = versions.get('puppet_modules', {})
-
-        result = []
-        for module_name, installed_version in installed_modules.items():
-            module_data = {
-                'name': module_name,
-                'serverVersion': installed_version,
-                'forgeVersion': 'N/A',
-                'status': 'unknown',
-                'deprecated': False,
-                'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
-            }
-
-            try:
-                url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
-                response = requests.get(url, timeout=15, headers={'User-Agent': 'Puppet-Version-Checker/1.0'})
-
-                if response.status_code == 200:
-                    data = response.json()
-
-                    if 'current_release' in data and 'version' in data['current_release']:
-                        forge_version = data['current_release']['version']
-                        module_data['forgeVersion'] = forge_version
-                        module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
-
-                    module_data['deprecated'] = data.get('deprecated_at') is not None
-                else:
-                    print(f"API returned status {response.status_code} for {module_name}")
-                    module_data['status'] = 'error'
-                    module_data['error'] = f"API returned status {response.status_code}"
-
-            except requests.Timeout:
-                print(f"Timeout fetching module {module_name}")
-                module_data['status'] = 'error'
-                module_data['error'] = 'Request timeout'
-            except requests.RequestException as e:
-                print(f"Error fetching module {module_name}: {str(e)}")
-                module_data['status'] = 'error'
-                module_data['error'] = str(e)
-            except Exception as e:
-                print(f"Unexpected error for module {module_name}: {str(e)}")
-                module_data['status'] = 'error'
-                module_data['error'] = f"Unexpected error: {str(e)}"
-
-            result.append(module_data)
-
+        result = fetch_modules_data()
         return jsonify(result)
     except Exception as e:
         print(f"Critical error in get_modules: {str(e)}")
@@ -122,81 +206,10 @@ def get_modules():
 # ============================================================================
 
 @app.route('/api/terraform-providers', methods=['GET'])
-@cache.cached(timeout=300)  # 5 Minuten Cache
 def get_terraform_providers():
     """Ruft Terraform Provider Informationen von der Terraform Registry ab."""
     try:
-        # Lade installierte Versionen aus JSON-Datei
-        versions = load_versions()
-        installed_providers = versions.get('terraform_providers', {})
-
-        result = []
-        for provider_name, installed_version in installed_providers.items():
-            namespace, name = provider_name.split('/')
-
-            provider_data = {
-                'name': provider_name,
-                'displayName': name,
-                'namespace': namespace,
-                'installedVersion': installed_version,
-                'latestVersion': 'N/A',
-                'status': 'unknown',
-                'url': f'https://registry.terraform.io/providers/{provider_name}'
-            }
-
-            try:
-                # Terraform Registry API v1
-                url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
-                response = requests.get(url, timeout=15, headers={
-                    'User-Agent': 'Terraform-Provider-Checker/1.0',
-                    'Accept': 'application/json'
-                })
-
-                if response.status_code == 200:
-                    data = response.json()
-
-                    # Die neueste Version aus der API holen
-                    if 'version' in data:
-                        latest_version = data['version']
-                        provider_data['latestVersion'] = latest_version
-
-                        # Versionen vergleichen (ohne 'v' Präfix falls vorhanden)
-                        installed_clean = installed_version.lstrip('v')
-                        latest_clean = latest_version.lstrip('v')
-
-                        if installed_clean == latest_clean:
-                            provider_data['status'] = 'current'
-                        else:
-                            provider_data['status'] = 'outdated'
-
-                    # Zusätzliche Informationen
-                    if 'description' in data:
-                        provider_data['description'] = data['description']
-                    if 'source' in data:
-                        provider_data['source'] = data['source']
-                    if 'published_at' in data:
-                        provider_data['publishedAt'] = data['published_at']
-
-                else:
-                    print(f"API returned status {response.status_code} for {provider_name}")
-                    provider_data['status'] = 'error'
-                    provider_data['error'] = f"API returned status {response.status_code}"
-
-            except requests.Timeout:
-                print(f"Timeout fetching provider {provider_name}")
-                provider_data['status'] = 'error'
-                provider_data['error'] = 'Request timeout'
-            except requests.RequestException as e:
-                print(f"Error fetching provider {provider_name}: {str(e)}")
-                provider_data['status'] = 'error'
-                provider_data['error'] = str(e)
-            except Exception as e:
-                print(f"Unexpected error for provider {provider_name}: {str(e)}")
-                provider_data['status'] = 'error'
-                provider_data['error'] = f"Unexpected error: {str(e)}"
-
-            result.append(provider_data)
-
+        result = fetch_terraform_data()
         return jsonify(result)
     except Exception as e:
         print(f"Critical error in get_terraform_providers: {str(e)}")
@@ -213,8 +226,7 @@ def get_system_status():
     # Puppet Module Status
     puppet_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     try:
-        modules_response = get_modules()
-        modules = modules_response.json
+        modules = fetch_modules_data()
 
         outdated_count = 0
         deprecated_count = 0
@@ -237,8 +249,7 @@ def get_system_status():
     # Terraform Provider Status
     terraform_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     try:
-        providers_response = get_terraform_providers()
-        providers = providers_response.json
+        providers = fetch_terraform_data()
 
         outdated_count = 0
         error_count = 0
@@ -288,6 +299,9 @@ def serve(path):
         return send_from_directory('public', 'index.html')
 
 # ============================================================================
-# VERCEL EXPORT - WICHTIG FÜR DEPLOYMENT
+# VERCEL EXPORT & LOCAL DEVELOPMENT
 # ============================================================================
 # Die Flask App wird automatisch von Vercel als WSGI-App erkannt.
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

@@ -87,6 +87,12 @@
             }
         }
 
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         function renderTable() {
             const filter = document.getElementById('filter').value.toLowerCase();
             const filtered = providers.filter(p =>
@@ -97,12 +103,12 @@
             document.getElementById('providerCount').textContent = `${filtered.length} Provider`;
             document.getElementById('providerTable').innerHTML = filtered.map(p => `
                 <tr>
-                    <td><strong>${p.displayName}</strong></td>
-                    <td class="text-muted">${p.namespace}</td>
-                    <td><code>${p.installedVersion}</code></td>
-                    <td><code>${p.latestVersion}</code></td>
+                    <td><strong>${escapeHtml(p.displayName)}</strong></td>
+                    <td class="text-muted">${escapeHtml(p.namespace)}</td>
+                    <td><code>${escapeHtml(p.installedVersion)}</code></td>
+                    <td><code>${escapeHtml(p.latestVersion)}</code></td>
                     <td><span class="badge ${getBadgeClass(p.status)}">${getStatusText(p.status)}</span></td>
-                    <td><a href="${p.url}" target="_blank">Registry</a></td>
+                    <td><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">Registry</a></td>
                 </tr>
             `).join('');
         }
