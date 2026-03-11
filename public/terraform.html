@@ -5,25 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Terraform Provider - Version Tracker</title>
     <link rel="stylesheet" href="/styles/shared.css">
-    <script>
-        (function() {
-            var t = localStorage.getItem('theme');
-            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
-            }
-        })();
-    </script>
+    <script src="/scripts/theme-init.js"></script>
 </head>
 <body>
     <nav class="nav">
         <div class="nav-container">
             <a href="/" class="nav-brand">Version Tracker</a>
-            <button class="nav-toggle" onclick="toggleNav()" aria-label="Menü">&#9776;</button>
+            <button class="nav-toggle" id="navToggle" aria-label="Menü">&#9776;</button>
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
                 <a href="/terraform.html" class="active">Terraform Provider</a>
-                <button onclick="toggleDarkMode()" class="btn btn-secondary">Theme</button>
+                <button id="themeToggle" class="btn btn-secondary">Theme</button>
             </div>
         </div>
     </nav>
@@ -34,7 +27,7 @@
                 <h1 class="page-title">Terraform Provider</h1>
                 <p class="page-subtitle">Vergleich mit Terraform Registry</p>
             </div>
-            <button onclick="fetchProviders()" class="btn btn-primary">Aktualisieren</button>
+            <button id="refreshBtn" class="btn btn-primary">Aktualisieren</button>
         </div>
 
         <div class="stats">
@@ -54,7 +47,7 @@
 
         <div class="card">
             <div class="flex justify-between items-center mb-2">
-                <input type="text" id="filter" class="filter-input" placeholder="Filter..." oninput="filterTable()">
+                <input type="text" id="filter" class="filter-input" placeholder="Filter...">
                 <span class="text-muted" id="providerCount"></span>
             </div>
 
@@ -79,72 +72,6 @@
     </main>
 
     <script src="/scripts/shared.js"></script>
-    <script>
-        let providers = [];
-
-        document.addEventListener('DOMContentLoaded', fetchProviders);
-
-        async function fetchProviders() {
-            document.getElementById('providerTable').innerHTML =
-                '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>';
-            try {
-                const res = await fetch('/api/terraform-providers');
-                if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
-                providers = await res.json();
-                renderTable();
-                updateStats();
-            } catch (e) {
-                console.error(e);
-                document.getElementById('providerTable').innerHTML =
-                    '<tr><td colspan="6"><div class="error-message">Fehler beim Laden: ' + escapeHtml(e.message) + '</div></td></tr>';
-            }
-        }
-
-        function renderTable() {
-            const filter = document.getElementById('filter').value.toLowerCase();
-            const filtered = providers.filter(p =>
-                p.name.toLowerCase().includes(filter) ||
-                p.displayName.toLowerCase().includes(filter)
-            );
-
-            document.getElementById('providerCount').textContent = `${filtered.length} Provider`;
-            document.getElementById('providerTable').innerHTML = filtered.map(p => `
-                <tr>
-                    <td><strong>${escapeHtml(p.displayName)}</strong></td>
-                    <td class="text-muted">${escapeHtml(p.namespace)}</td>
-                    <td><code>${escapeHtml(p.installedVersion)}</code></td>
-                    <td><code>${escapeHtml(p.latestVersion)}</code></td>
-                    <td><span class="badge ${getBadgeClass(p.status)}">${getStatusText(p.status)}</span></td>
-                    <td><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">Registry</a></td>
-                </tr>
-            `).join('');
-        }
-
-        function filterTable() {
-            renderTable();
-        }
-
-        function updateStats() {
-            const current = providers.filter(p => p.status === 'current').length;
-            const outdated = providers.filter(p => p.status === 'outdated').length;
-            const errors = providers.filter(p => p.status === 'error').length;
-
-            document.getElementById('currentCount').textContent = current;
-            document.getElementById('outdatedCount').textContent = outdated;
-            document.getElementById('errorCount').textContent = errors;
-        }
-
-        function getBadgeClass(status) {
-            if (status === 'current') return 'badge-success';
-            if (status === 'outdated') return 'badge-warning';
-            return 'badge-danger';
-        }
-
-        function getStatusText(status) {
-            if (status === 'current') return 'Aktuell';
-            if (status === 'outdated') return 'Update';
-            return 'Fehler';
-        }
-    </script>
+    <script src="/scripts/terraform.js"></script>
 </body>
 </html>
