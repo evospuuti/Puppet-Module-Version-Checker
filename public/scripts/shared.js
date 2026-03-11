@@ -11,7 +11,8 @@ function toggleNav() {
 
 // HTML Escaping (XSS-Schutz)
 function escapeHtml(str) {
+    if (str == null) return '';
     var div = document.createElement('div');
-    div.textContent = str;
+    div.textContent = String(str);
     return div.innerHTML;
 }

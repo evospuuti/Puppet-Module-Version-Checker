@@ -130,6 +130,11 @@ body {
     gap: 1rem;
 }
 
+.card-link {
+    text-decoration: none;
+    color: inherit;
+}
+
 /* Table */
 .table-container {
     background: var(--bg);
@@ -337,7 +342,6 @@ a:hover {
         width: 100%;
         text-align: left;
     }
-    .nav { position: relative; }
     .stats { grid-template-columns: repeat(3, 1fr); }
 }
 

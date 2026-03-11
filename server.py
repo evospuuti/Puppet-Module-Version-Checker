@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
@@ -128,7 +128,19 @@ def _fetch_single_module(module_name, installed_version):
 
 def _fetch_single_provider(provider_name, installed_version):
     """Holt Daten für einen einzelnen Terraform-Provider von der Registry."""
-    namespace, name = provider_name.split('/')
+    parts = provider_name.split('/')
+    if len(parts) != 2:
+        return {
+            'name': provider_name,
+            'displayName': provider_name,
+            'namespace': '',
+            'installedVersion': installed_version,
+            'latestVersion': 'N/A',
+            'status': 'error',
+            'error': f'Ungültiger Provider-Name: {provider_name}',
+            'url': ''
+        }
+    namespace, name = parts
 
     provider_data = {
         'name': provider_name,
@@ -313,7 +325,7 @@ def get_system_status():
     return jsonify({
         "puppet": puppet_status,
         "terraform": terraform_status,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     })
 
 # ============================================================================
