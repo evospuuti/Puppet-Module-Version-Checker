@@ -17,11 +17,21 @@
     },
     {
       "src": "/styles/(.*)",
-      "dest": "public/styles/$1"
+      "dest": "public/styles/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=86400, s-maxage=86400"
+      }
     },
     {
       "src": "/scripts/(.*)",
-      "dest": "public/scripts/$1"
+      "dest": "public/scripts/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=86400, s-maxage=86400"
+      }
+    },
+    {
+      "src": "/favicon.ico",
+      "dest": "server.py"
     },
     {
       "src": "/(.*\\.(html|css|js|png|jpg|jpeg|gif|svg|ico))",

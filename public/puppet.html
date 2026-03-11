@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Puppet Module - Version Tracker</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
     <link rel="stylesheet" href="/styles/shared.css">
     <script src="/scripts/theme-init.js"></script>
 </head>
@@ -27,7 +28,10 @@
                 <h1 class="page-title">Puppet Module</h1>
                 <p class="page-subtitle">Vergleich mit Puppet Forge</p>
             </div>
-            <button id="refreshBtn" class="btn btn-primary">Aktualisieren</button>
+            <div class="flex items-center gap-1">
+                <span class="text-muted text-small" id="lastUpdated"></span>
+                <button id="refreshBtn" class="btn btn-primary">Aktualisieren</button>
+            </div>
         </div>
 
         <div class="stats">
@@ -55,10 +59,10 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Modul</th>
-                            <th>Tracked</th>
-                            <th>Forge</th>
-                            <th>Status</th>
+                            <th class="sortable" data-sort="name" data-label="Modul">Modul</th>
+                            <th class="sortable" data-sort="tracked" data-label="Tracked">Tracked</th>
+                            <th class="sortable" data-sort="forge" data-label="Forge">Forge</th>
+                            <th class="sortable" data-sort="status" data-label="Status">Status</th>
                             <th>Link</th>
                         </tr>
                     </thead>

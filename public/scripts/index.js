@@ -23,10 +23,15 @@ async function loadStatus() {
                 '<td><span class="badge ' + getBadgeClass(data.terraform.status) + '">' + escapeHtml(data.terraform.status) + '</span></td>' +
                 '<td>' + escapeHtml(data.terraform.details) + '</td>' +
             '</tr>';
+
+        var ts = document.getElementById('lastUpdated');
+        if (ts && data.timestamp) {
+            ts.textContent = 'Letzte Aktualisierung: ' + data.timestamp + ' UTC';
+        }
     } catch (e) {
         console.error(e);
         document.getElementById('statusTable').innerHTML =
-            '<tr><td colspan="3"><div class="error-message">Fehler beim Laden: ' + escapeHtml(e.message) + '</div></td></tr>';
+            '<tr><td colspan="3"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
     }
 }
 
