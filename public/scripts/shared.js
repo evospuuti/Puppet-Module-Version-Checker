@@ -11,7 +11,17 @@ function toggleNav() {
 
 // HTML Escaping (XSS-Schutz)
 function escapeHtml(str) {
+    if (str == null) return '';
     var div = document.createElement('div');
-    div.textContent = str;
+    div.textContent = String(str);
     return div.innerHTML;
 }
+
+// Event-Listener für Navigation (alle Seiten)
+document.addEventListener('DOMContentLoaded', function() {
+    var navToggle = document.getElementById('navToggle');
+    if (navToggle) navToggle.addEventListener('click', toggleNav);
+
+    var themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) themeToggle.addEventListener('click', toggleDarkMode);
+});

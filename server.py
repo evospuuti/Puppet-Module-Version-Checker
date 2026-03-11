@@ -2,10 +2,12 @@ import os
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_caching import Cache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import requests
 
 # ============================================================================
@@ -21,11 +23,20 @@ CORS(app, origins=[
     'http://127.0.0.1:5000'
 ])
 
-# Cache-Konfiguration für Vercel - nur SimpleCache verwenden
+# Cache-Konfiguration - FileSystemCache für bessere Persistenz auf Vercel
 cache = Cache(app, config={
-    "CACHE_TYPE": "SimpleCache",
+    "CACHE_TYPE": "FileSystemCache",
+    "CACHE_DIR": os.path.join(os.environ.get('TMPDIR', '/tmp'), 'version-checker-cache'),
     "CACHE_DEFAULT_TIMEOUT": 300
 })
+
+# Rate-Limiting zum Schutz der API-Endpoints
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["60 per minute"],
+    storage_uri="memory://"
+)
 
 # HTTP Session für Connection-Pooling (wiederverwendet TCP-Verbindungen)
 http_session = requests.Session()
@@ -49,8 +60,8 @@ def add_security_headers(response):
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
         "img-src 'self'; "
         "connect-src 'self'; "
         "frame-ancestors 'none'"
@@ -128,7 +139,19 @@ def _fetch_single_module(module_name, installed_version):
 
 def _fetch_single_provider(provider_name, installed_version):
     """Holt Daten für einen einzelnen Terraform-Provider von der Registry."""
-    namespace, name = provider_name.split('/')
+    parts = provider_name.split('/')
+    if len(parts) != 2:
+        return {
+            'name': provider_name,
+            'displayName': provider_name,
+            'namespace': '',
+            'installedVersion': installed_version,
+            'latestVersion': 'N/A',
+            'status': 'error',
+            'error': f'Ungültiger Provider-Name: {provider_name}',
+            'url': ''
+        }
+    namespace, name = parts
 
     provider_data = {
         'name': provider_name,
@@ -231,6 +254,7 @@ def serve_scripts(filename):
 # ============================================================================
 
 @app.route('/api/modules', methods=['GET'])
+@limiter.limit("30 per minute")
 def get_modules():
     """Ruft Puppet Module Informationen vom Puppet Forge ab."""
     try:
@@ -245,6 +269,7 @@ def get_modules():
 # ============================================================================
 
 @app.route('/api/terraform-providers', methods=['GET'])
+@limiter.limit("30 per minute")
 def get_terraform_providers():
     """Ruft Terraform Provider Informationen von der Terraform Registry ab."""
     try:
@@ -259,6 +284,7 @@ def get_terraform_providers():
 # ============================================================================
 
 @app.route('/api/system_status', methods=['GET'])
+@limiter.limit("30 per minute")
 def get_system_status():
     """Gibt eine Zusammenfassung des gesamten System-Status zurück."""
 
@@ -313,7 +339,7 @@ def get_system_status():
     return jsonify({
         "puppet": puppet_status,
         "terraform": terraform_status,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     })
 
 # ============================================================================
