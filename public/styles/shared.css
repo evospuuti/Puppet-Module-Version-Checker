@@ -158,6 +158,16 @@ th {
     letter-spacing: 0.05em;
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+th.sortable:hover {
+    color: var(--primary);
 }
 
 td {
@@ -358,3 +368,4 @@ a:hover {
 .justify-between { justify-content: space-between; }
 .gap-1 { gap: 0.5rem; }
 .gap-2 { gap: 1rem; }
+.text-small { font-size: 0.75rem; }

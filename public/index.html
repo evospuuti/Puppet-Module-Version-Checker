@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Version Tracker</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
     <link rel="stylesheet" href="/styles/shared.css">
     <script src="/scripts/theme-init.js"></script>
 </head>
@@ -50,7 +51,10 @@
         </div>
 
         <div class="card">
-            <h3 class="mb-2">Status Details</h3>
+            <div class="flex justify-between items-center mb-2">
+                <h3>Status Details</h3>
+                <span class="text-muted text-small" id="lastUpdated"></span>
+            </div>
             <div class="table-container">
                 <table>
                     <thead>

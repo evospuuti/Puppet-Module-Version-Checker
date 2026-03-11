@@ -38,10 +38,6 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# HTTP Session für Connection-Pooling (wiederverwendet TCP-Verbindungen)
-http_session = requests.Session()
-http_session.headers.update({'User-Agent': 'Version-Checker/2.0'})
-
 # Logging
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -62,7 +58,7 @@ def add_security_headers(response):
         "default-src 'self'; "
         "script-src 'self'; "
         "style-src 'self'; "
-        "img-src 'self'; "
+        "img-src 'self' data:; "
         "connect-src 'self'; "
         "frame-ancestors 'none'"
     )
@@ -74,21 +70,40 @@ def add_security_headers(response):
     return response
 
 # ============================================================================
-# VERSION LOADING FROM JSON
+# VERSION LOADING FROM JSON (cached in memory)
 # ============================================================================
 
+_versions_cache = None
+
 def load_versions():
-    """Lädt die installierten Versionen aus versions.json."""
+    """Lädt die installierten Versionen aus versions.json (einmalig gecached)."""
+    global _versions_cache
+    if _versions_cache is not None:
+        return _versions_cache
+
     versions_file = os.path.join(os.path.dirname(__file__), 'versions.json')
     try:
         with open(versions_file, 'r') as f:
-            return json.load(f)
+            _versions_cache = json.load(f)
+            return _versions_cache
     except FileNotFoundError:
         logger.warning("versions.json not found, using empty defaults")
         return {"puppet_modules": {}, "terraform_providers": {}}
     except json.JSONDecodeError as e:
         logger.error("Error parsing versions.json: %s", e)
         return {"puppet_modules": {}, "terraform_providers": {}}
+
+# ============================================================================
+# THREAD-SAFE HTTP HELPER
+# ============================================================================
+
+_http_headers = {'User-Agent': 'Version-Checker/2.0'}
+
+def _create_http_session():
+    """Erstellt eine neue requests.Session (thread-safe, eine pro Thread)."""
+    session = requests.Session()
+    session.headers.update(_http_headers)
+    return session
 
 # ============================================================================
 # EINZELNE MODULE/PROVIDER ABRUFEN (für parallele Ausführung)
@@ -105,9 +120,10 @@ def _fetch_single_module(module_name, installed_version):
         'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
     }
 
+    session = _create_http_session()
     try:
         url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
-        response = http_session.get(url, timeout=10)
+        response = session.get(url, timeout=10)
 
         if response.status_code == 200:
             data = response.json()
@@ -133,6 +149,8 @@ def _fetch_single_module(module_name, installed_version):
         logger.exception("Unexpected error for module %s", module_name)
         module_data['status'] = 'error'
         module_data['error'] = 'Unerwarteter Fehler'
+    finally:
+        session.close()
 
     return module_data
 
@@ -163,9 +181,10 @@ def _fetch_single_provider(provider_name, installed_version):
         'url': f'https://registry.terraform.io/providers/{provider_name}'
     }
 
+    session = _create_http_session()
     try:
         url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
-        response = http_session.get(url, timeout=10, headers={'Accept': 'application/json'})
+        response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
 
         if response.status_code == 200:
             data = response.json()
@@ -201,6 +220,8 @@ def _fetch_single_provider(provider_name, installed_version):
         logger.exception("Unexpected error for provider %s", provider_name)
         provider_data['status'] = 'error'
         provider_data['error'] = 'Unerwarteter Fehler'
+    finally:
+        session.close()
 
     return provider_data
 
@@ -248,6 +269,19 @@ def serve_styles(filename):
 def serve_scripts(filename):
     """Serve JavaScript files."""
     return send_from_directory('public/scripts', filename)
+
+@app.route('/favicon.ico')
+def serve_favicon():
+    """Serve favicon (SVG inline)."""
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+        '<rect width="32" height="32" rx="6" fill="#0066cc"/>'
+        '<text x="16" y="23" font-size="20" text-anchor="middle" fill="white" '
+        'font-family="sans-serif" font-weight="bold">V</text>'
+        '</svg>'
+    )
+    return app.response_class(svg, mimetype='image/svg+xml',
+                              headers={'Cache-Control': 'public, max-age=604800'})
 
 # ============================================================================
 # API ROUTES - PUPPET MODULES
@@ -347,6 +381,7 @@ def get_system_status():
 # ============================================================================
 
 @app.route('/api/versions', methods=['GET'])
+@limiter.limit("30 per minute")
 def get_versions():
     """Gibt die aktuellen installierten Versionen aus versions.json zurück."""
     versions = load_versions()
@@ -356,14 +391,22 @@ def get_versions():
 # MAIN ROUTES - HTML PAGES
 # ============================================================================
 
+# Bekannte statische Seiten
+_KNOWN_PAGES = {'', 'index.html', 'puppet.html', 'terraform.html'}
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
-    """Serve static HTML files and fallback to index.html for SPA routing."""
-    if path != "" and os.path.exists(f"public/{path}"):
+    """Serve static HTML files. Returns 404 for unknown paths."""
+    if path in _KNOWN_PAGES:
+        filename = 'index.html' if path == '' else path
+        return send_from_directory('public', filename)
+
+    # Statische Dateien (CSS, JS, Bilder) direkt ausliefern
+    if path and os.path.exists(os.path.join('public', path)):
         return send_from_directory('public', path)
-    else:
-        return send_from_directory('public', 'index.html')
+
+    return send_from_directory('public', 'index.html'), 404
 
 # ============================================================================
 # VERCEL EXPORT & LOCAL DEVELOPMENT

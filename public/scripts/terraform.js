@@ -1,4 +1,6 @@
 var providers = [];
+var sortColumn = 'name';
+var sortAsc = true;
 
 document.addEventListener('DOMContentLoaded', function() {
     fetchProviders();
@@ -15,11 +17,22 @@ async function fetchProviders() {
         providers = await res.json();
         renderTable();
         updateStats();
+        updateTimestamp();
     } catch (e) {
         console.error(e);
         document.getElementById('providerTable').innerHTML =
-            '<tr><td colspan="6"><div class="error-message">Fehler beim Laden: ' + escapeHtml(e.message) + '</div></td></tr>';
+            '<tr><td colspan="6"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
     }
+}
+
+function sortBy(column) {
+    if (sortColumn === column) {
+        sortAsc = !sortAsc;
+    } else {
+        sortColumn = column;
+        sortAsc = true;
+    }
+    renderTable();
 }
 
 function renderTable() {
@@ -29,7 +42,28 @@ function renderTable() {
             p.displayName.toLowerCase().includes(filter);
     });
 
+    // Sortierung
+    filtered.sort(function(a, b) {
+        var valA, valB;
+        if (sortColumn === 'name') { valA = a.displayName; valB = b.displayName; }
+        else if (sortColumn === 'namespace') { valA = a.namespace; valB = b.namespace; }
+        else if (sortColumn === 'status') { valA = getSortOrder(a.status); valB = getSortOrder(b.status); }
+        else if (sortColumn === 'tracked') { valA = a.installedVersion; valB = b.installedVersion; }
+        else if (sortColumn === 'registry') { valA = a.latestVersion; valB = b.latestVersion; }
+        else { valA = a.displayName; valB = b.displayName; }
+
+        if (typeof valA === 'string') {
+            var cmp = valA.localeCompare(valB);
+            return sortAsc ? cmp : -cmp;
+        }
+        return sortAsc ? valA - valB : valB - valA;
+    });
+
     document.getElementById('providerCount').textContent = filtered.length + ' Provider';
+
+    // Header mit Sortier-Indikatoren aktualisieren
+    updateSortHeaders();
+
     document.getElementById('providerTable').innerHTML = filtered.map(function(p) {
         return '<tr>' +
             '<td><strong>' + escapeHtml(p.displayName) + '</strong></td>' +
@@ -40,6 +74,26 @@ function renderTable() {
             '<td><a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener noreferrer">Registry</a></td>' +
             '</tr>';
     }).join('');
+}
+
+function updateSortHeaders() {
+    var headers = document.querySelectorAll('th[data-sort]');
+    for (var i = 0; i < headers.length; i++) {
+        var th = headers[i];
+        var col = th.getAttribute('data-sort');
+        var base = th.getAttribute('data-label');
+        if (col === sortColumn) {
+            th.textContent = base + (sortAsc ? ' \u25B2' : ' \u25BC');
+        } else {
+            th.textContent = base;
+        }
+    }
+}
+
+function getSortOrder(status) {
+    if (status === 'error') return 2;
+    if (status === 'outdated') return 1;
+    return 0;
 }
 
 function filterTable() {
@@ -54,6 +108,11 @@ function updateStats() {
     document.getElementById('currentCount').textContent = current;
     document.getElementById('outdatedCount').textContent = outdated;
     document.getElementById('errorCount').textContent = errors;
+}
+
+function updateTimestamp() {
+    var ts = document.getElementById('lastUpdated');
+    if (ts) ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
 }
 
 function getBadgeClass(status) {
