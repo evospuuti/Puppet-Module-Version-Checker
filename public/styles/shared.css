@@ -358,6 +358,47 @@ a:hover {
     .stats { grid-template-columns: repeat(3, 1fr); }
 }
 
+/* Skeleton Loading */
+.skeleton-row td {
+    padding: 0.75rem 1rem;
+}
+
+.skeleton-line {
+    height: 0.875rem;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--border) 25%, var(--bg-secondary) 50%, var(--border) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Stale-Indikator: zeigt an wenn Daten aus Cache stammen */
+.stale-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.stale-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--warning);
+    animation: stale-pulse 2s ease-in-out infinite;
+}
+
+@keyframes stale-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
 /* Utilities */
 .hidden { display: none; }
 .text-muted { color: var(--text-muted); }

@@ -25,9 +25,7 @@ function getErrorMessage(e) {
     return 'Fehler beim Laden: ' + msg;
 }
 
-// autoresearch-Pattern: Debounce für Filter-Input
-// Analog zu Gradient Accumulation - sammelt Eingaben und führt
-// die teure Operation (DOM-Update) nur einmal aus.
+// Debounce für Filter-Input
 function debounce(fn, delay) {
     var timer = null;
     return function() {
@@ -40,9 +38,94 @@ function debounce(fn, delay) {
     };
 }
 
-// autoresearch-Pattern: Request-Deduplizierung
-// Verhindert parallele identische Requests (analog zu Cache-Check
-// vor Download in autoresearch's prepare.py).
+// ============================================================================
+// STALE-WHILE-REVALIDATE CACHE
+// Zeigt sofort gecachte Daten aus localStorage an und holt im Hintergrund
+// frische Daten. Der User sieht nach dem ersten Besuch nie wieder einen
+// Spinner - die Seite lädt sofort.
+// ============================================================================
+
+var _CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 Minuten
+
+function _getCacheKey(url) {
+    return 'swr_' + url;
+}
+
+function _getCache(url) {
+    try {
+        var raw = localStorage.getItem(_getCacheKey(url));
+        if (!raw) return null;
+        var entry = JSON.parse(raw);
+        return entry;
+    } catch (e) {
+        return null;
+    }
+}
+
+function _setCache(url, data) {
+    try {
+        localStorage.setItem(_getCacheKey(url), JSON.stringify({
+            data: data,
+            timestamp: Date.now()
+        }));
+    } catch (e) {
+        // localStorage voll oder nicht verfügbar - ignorieren
+    }
+}
+
+function _isCacheStale(entry) {
+    if (!entry || !entry.timestamp) return true;
+    return (Date.now() - entry.timestamp) > _CACHE_MAX_AGE_MS;
+}
+
+/**
+ * Stale-While-Revalidate Fetch:
+ * 1. Wenn Cache vorhanden: sofort onData(cachedData, false) aufrufen
+ * 2. Im Hintergrund frische Daten holen
+ * 3. Bei neuen Daten: onData(freshData, true) aufrufen
+ * 4. Kein Cache: onLoading() -> fetch -> onData(freshData, true)
+ *
+ * @param {string} url - API-Endpoint
+ * @param {function} onData - Callback(data, isFresh) bei Daten
+ * @param {function} onError - Callback(error) bei Fehler
+ * @param {function} onLoading - Callback() wenn kein Cache und geladen wird
+ */
+function fetchSWR(url, onData, onError, onLoading) {
+    var cached = _getCache(url);
+    var hadCache = false;
+
+    // Sofort gecachte Daten anzeigen (stale)
+    if (cached && cached.data) {
+        hadCache = true;
+        onData(cached.data, false);
+    }
+
+    // Wenn Cache noch frisch ist, nicht neu laden
+    if (cached && !_isCacheStale(cached)) {
+        return;
+    }
+
+    // Kein Cache vorhanden -> Loading-State anzeigen
+    if (!hadCache && onLoading) {
+        onLoading();
+    }
+
+    // Im Hintergrund frische Daten holen (revalidate)
+    fetchDeduped(url).then(function(data) {
+        _setCache(url, data);
+        onData(data, true);
+    }).catch(function(err) {
+        // Nur Fehler anzeigen wenn kein Cache vorhanden war
+        if (!hadCache) {
+            onError(err);
+        }
+    });
+}
+
+// ============================================================================
+// REQUEST DEDUPLICATION
+// ============================================================================
+
 var _pendingRequests = {};
 function fetchDeduped(url) {
     if (_pendingRequests[url]) {
@@ -60,12 +143,9 @@ function fetchDeduped(url) {
     return promise;
 }
 
-// autoresearch-Pattern: Prefetch für nächste Seite
-// Analog zu autoresearch's data prefetching (lädt nächsten Batch
-// während aktuelle Daten verarbeitet werden).
+// Prefetch für nächste Seite
 function prefetchData(urls) {
     if (!window.requestIdleCallback) {
-        // Fallback: nach kurzer Verzögerung prefetchen
         setTimeout(function() {
             urls.forEach(function(url) { fetchDeduped(url); });
         }, 1000);
@@ -74,6 +154,28 @@ function prefetchData(urls) {
     window.requestIdleCallback(function() {
         urls.forEach(function(url) { fetchDeduped(url); });
     }, { timeout: 3000 });
+}
+
+// ============================================================================
+// SKELETON LOADING
+// Erzeugt Placeholder-Zeilen die wie echte Daten aussehen, aber mit
+// animierten Balken statt Text. Gibt dem User sofort visuelle Struktur.
+// ============================================================================
+
+function createSkeletonRows(count, columns) {
+    var fragment = document.createDocumentFragment();
+    for (var i = 0; i < count; i++) {
+        var tr = document.createElement('tr');
+        tr.className = 'skeleton-row';
+        var html = '';
+        for (var j = 0; j < columns; j++) {
+            var width = 40 + Math.floor(Math.random() * 40); // 40-80%
+            html += '<td><div class="skeleton-line" style="width:' + width + '%"></div></td>';
+        }
+        tr.innerHTML = html;
+        fragment.appendChild(tr);
+    }
+    return fragment;
 }
 
 // Event-Listener für Navigation (alle Seiten)

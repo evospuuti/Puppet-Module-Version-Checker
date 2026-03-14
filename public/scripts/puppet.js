@@ -2,30 +2,48 @@ var modules = [];
 var sortColumn = 'name';
 var sortAsc = true;
 
-// autoresearch-Pattern: Debounced Filter
-// Analog zu Gradient Accumulation: Input-Events sammeln und
-// DOM-Update erst nach Eingabepause ausführen.
 var debouncedFilter = debounce(function() { renderTable(); }, 150);
 
 document.addEventListener('DOMContentLoaded', function() {
     fetchModules();
-    document.getElementById('refreshBtn').addEventListener('click', fetchModules);
+    document.getElementById('refreshBtn').addEventListener('click', function() {
+        // Bei manuellem Refresh: Cache löschen und neu laden
+        try { localStorage.removeItem(_getCacheKey('/api/modules')); } catch(e) {}
+        fetchModules();
+    });
     document.getElementById('filter').addEventListener('input', debouncedFilter);
 });
 
-async function fetchModules() {
-    document.getElementById('moduleTable').innerHTML =
-        '<tr><td colspan="5"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>';
-    try {
-        modules = await fetchDeduped('/api/modules');
-        renderTable();
-        updateStats();
-        updateTimestamp();
-    } catch (e) {
-        console.error(e);
-        document.getElementById('moduleTable').innerHTML =
-            '<tr><td colspan="5"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
-    }
+function fetchModules() {
+    fetchSWR('/api/modules',
+        // onData: Daten anzeigen (cached oder frisch)
+        function(data, isFresh) {
+            modules = data;
+            renderTable();
+            updateStats();
+
+            var ts = document.getElementById('lastUpdated');
+            if (ts) {
+                if (isFresh) {
+                    ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+                } else {
+                    ts.innerHTML = '<span class="stale-indicator"><span class="stale-dot"></span>wird aktualisiert</span>';
+                }
+            }
+        },
+        // onError
+        function(e) {
+            console.error(e);
+            document.getElementById('moduleTable').innerHTML =
+                '<tr><td colspan="5"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
+        },
+        // onLoading: Skeleton statt Spinner
+        function() {
+            var table = document.getElementById('moduleTable');
+            table.textContent = '';
+            table.appendChild(createSkeletonRows(6, 5));
+        }
+    );
 }
 
 function sortBy(column) {
@@ -45,7 +63,6 @@ function renderTable() {
             m.serverVersion.toLowerCase().includes(filter);
     });
 
-    // Sortierung
     filtered.sort(function(a, b) {
         var valA, valB;
         if (sortColumn === 'name') { valA = a.name; valB = b.name; }
@@ -62,12 +79,8 @@ function renderTable() {
     });
 
     document.getElementById('moduleCount').textContent = filtered.length + ' Module';
-
-    // Header mit Sortier-Indikatoren aktualisieren
     updateSortHeaders();
 
-    // autoresearch-Pattern: DOM-Batch-Update via DocumentFragment
-    // Alle Zeilen im Fragment aufbauen, dann in einem Reflow einfügen.
     var fragment = document.createDocumentFragment();
     for (var i = 0; i < filtered.length; i++) {
         var m = filtered[i];
@@ -116,11 +129,6 @@ function updateStats() {
     document.getElementById('currentCount').textContent = current;
     document.getElementById('outdatedCount').textContent = outdated;
     document.getElementById('errorCount').textContent = errors;
-}
-
-function updateTimestamp() {
-    var ts = document.getElementById('lastUpdated');
-    if (ts) ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
 }
 
 function getBadgeClass(m) {

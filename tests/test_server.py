@@ -1387,16 +1387,16 @@ def test_terraform_js_uses_document_fragment(client):
     assert b'createDocumentFragment' in res.data
 
 
-def test_puppet_js_uses_fetch_deduped(client):
-    """puppet.js nutzt fetchDeduped statt fetch."""
+def test_puppet_js_uses_fetch_swr_not_raw_fetch(client):
+    """puppet.js nutzt fetchSWR statt direktem fetch."""
     res = client.get('/scripts/puppet.js')
-    assert b'fetchDeduped' in res.data
+    assert b'fetchSWR' in res.data
 
 
-def test_terraform_js_uses_fetch_deduped(client):
-    """terraform.js nutzt fetchDeduped statt fetch."""
+def test_terraform_js_uses_fetch_swr_not_raw_fetch(client):
+    """terraform.js nutzt fetchSWR statt direktem fetch."""
     res = client.get('/scripts/terraform.js')
-    assert b'fetchDeduped' in res.data
+    assert b'fetchSWR' in res.data
 
 
 # ============================================================================
@@ -1449,3 +1449,154 @@ def test_known_pages_set():
 def test_known_pages_count():
     """_KNOWN_PAGES hat genau 4 Einträge."""
     assert len(server._KNOWN_PAGES) == 4
+
+
+# ============================================================================
+# INTEGRATION TESTS - STALE-WHILE-REVALIDATE (spürbare Performance)
+# ============================================================================
+
+def test_shared_js_has_fetch_swr(client):
+    """shared.js enthält fetchSWR-Funktion."""
+    res = client.get('/scripts/shared.js')
+    assert b'fetchSWR' in res.data
+
+
+def test_shared_js_has_cache_functions(client):
+    """shared.js enthält Cache-Funktionen (_getCache, _setCache)."""
+    res = client.get('/scripts/shared.js')
+    assert b'_getCache' in res.data
+    assert b'_setCache' in res.data
+
+
+def test_shared_js_has_stale_check(client):
+    """shared.js enthält _isCacheStale-Funktion."""
+    res = client.get('/scripts/shared.js')
+    assert b'_isCacheStale' in res.data
+
+
+def test_shared_js_swr_uses_localstorage(client):
+    """shared.js SWR nutzt localStorage."""
+    res = client.get('/scripts/shared.js')
+    assert b'localStorage' in res.data
+
+
+def test_shared_js_swr_has_max_age(client):
+    """shared.js SWR hat konfigurierbare Cache-Dauer."""
+    res = client.get('/scripts/shared.js')
+    assert b'_CACHE_MAX_AGE_MS' in res.data
+
+
+def test_index_js_uses_fetch_swr(client):
+    """index.js verwendet fetchSWR statt direktem fetch."""
+    res = client.get('/scripts/index.js')
+    assert b'fetchSWR' in res.data
+
+
+def test_puppet_js_uses_fetch_swr(client):
+    """puppet.js verwendet fetchSWR."""
+    res = client.get('/scripts/puppet.js')
+    assert b'fetchSWR' in res.data
+
+
+def test_terraform_js_uses_fetch_swr(client):
+    """terraform.js verwendet fetchSWR."""
+    res = client.get('/scripts/terraform.js')
+    assert b'fetchSWR' in res.data
+
+
+def test_puppet_js_refresh_clears_cache(client):
+    """puppet.js löscht Cache bei manuellem Refresh."""
+    res = client.get('/scripts/puppet.js')
+    assert b'removeItem' in res.data
+
+
+def test_terraform_js_refresh_clears_cache(client):
+    """terraform.js löscht Cache bei manuellem Refresh."""
+    res = client.get('/scripts/terraform.js')
+    assert b'removeItem' in res.data
+
+
+# ============================================================================
+# INTEGRATION TESTS - SKELETON LOADING (spürbare Performance)
+# ============================================================================
+
+def test_shared_js_has_create_skeleton_rows(client):
+    """shared.js enthält createSkeletonRows-Funktion."""
+    res = client.get('/scripts/shared.js')
+    assert b'createSkeletonRows' in res.data
+
+
+def test_shared_js_skeleton_creates_fragment(client):
+    """shared.js Skeleton nutzt DocumentFragment."""
+    res = client.get('/scripts/shared.js')
+    # createSkeletonRows sollte createDocumentFragment nutzen
+    data = res.data.decode()
+    assert 'createDocumentFragment' in data
+
+
+def test_shared_js_skeleton_uses_skeleton_line_class(client):
+    """shared.js Skeleton nutzt skeleton-line CSS-Klasse."""
+    res = client.get('/scripts/shared.js')
+    assert b'skeleton-line' in res.data
+
+
+def test_css_has_skeleton_styles(client):
+    """CSS enthält Skeleton-Loading Styles."""
+    res = client.get('/styles/shared.css')
+    assert b'skeleton-line' in res.data
+    assert b'skeleton-shimmer' in res.data
+
+
+def test_css_skeleton_has_animation(client):
+    """CSS Skeleton hat shimmer-Animation."""
+    res = client.get('/styles/shared.css')
+    assert b'@keyframes skeleton-shimmer' in res.data
+
+
+def test_css_has_stale_indicator(client):
+    """CSS enthält Stale-Indikator Styles."""
+    res = client.get('/styles/shared.css')
+    assert b'stale-indicator' in res.data
+    assert b'stale-dot' in res.data
+
+
+def test_css_stale_dot_has_pulse_animation(client):
+    """CSS Stale-Dot hat Pulse-Animation."""
+    res = client.get('/styles/shared.css')
+    assert b'stale-pulse' in res.data
+
+
+def test_index_js_uses_skeleton(client):
+    """index.js nutzt createSkeletonRows für Loading-State."""
+    res = client.get('/scripts/index.js')
+    assert b'createSkeletonRows' in res.data
+
+
+def test_puppet_js_uses_skeleton(client):
+    """puppet.js nutzt createSkeletonRows für Loading-State."""
+    res = client.get('/scripts/puppet.js')
+    assert b'createSkeletonRows' in res.data
+
+
+def test_terraform_js_uses_skeleton(client):
+    """terraform.js nutzt createSkeletonRows für Loading-State."""
+    res = client.get('/scripts/terraform.js')
+    assert b'createSkeletonRows' in res.data
+
+
+def test_index_js_shows_stale_indicator(client):
+    """index.js zeigt Stale-Indikator bei gecachten Daten."""
+    res = client.get('/scripts/index.js')
+    assert b'stale-indicator' in res.data
+
+
+def test_puppet_js_shows_stale_indicator(client):
+    """puppet.js zeigt Stale-Indikator bei gecachten Daten."""
+    res = client.get('/scripts/puppet.js')
+    assert b'stale-indicator' in res.data
+
+
+def test_terraform_js_shows_stale_indicator(client):
+    """terraform.js zeigt Stale-Indikator bei gecachten Daten."""
+    res = client.get('/scripts/terraform.js')
+    assert b'stale-indicator' in res.data
