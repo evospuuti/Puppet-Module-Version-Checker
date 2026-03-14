@@ -2,19 +2,22 @@ var modules = [];
 var sortColumn = 'name';
 var sortAsc = true;
 
+// autoresearch-Pattern: Debounced Filter
+// Analog zu Gradient Accumulation: Input-Events sammeln und
+// DOM-Update erst nach Eingabepause ausführen.
+var debouncedFilter = debounce(function() { renderTable(); }, 150);
+
 document.addEventListener('DOMContentLoaded', function() {
     fetchModules();
     document.getElementById('refreshBtn').addEventListener('click', fetchModules);
-    document.getElementById('filter').addEventListener('input', filterTable);
+    document.getElementById('filter').addEventListener('input', debouncedFilter);
 });
 
 async function fetchModules() {
     document.getElementById('moduleTable').innerHTML =
         '<tr><td colspan="5"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>';
     try {
-        var res = await fetch('/api/modules');
-        if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
-        modules = await res.json();
+        modules = await fetchDeduped('/api/modules');
         renderTable();
         updateStats();
         updateTimestamp();
@@ -63,15 +66,23 @@ function renderTable() {
     // Header mit Sortier-Indikatoren aktualisieren
     updateSortHeaders();
 
-    document.getElementById('moduleTable').innerHTML = filtered.map(function(m) {
-        return '<tr>' +
+    // autoresearch-Pattern: DOM-Batch-Update via DocumentFragment
+    // Alle Zeilen im Fragment aufbauen, dann in einem Reflow einfügen.
+    var fragment = document.createDocumentFragment();
+    for (var i = 0; i < filtered.length; i++) {
+        var m = filtered[i];
+        var tr = document.createElement('tr');
+        tr.innerHTML =
             '<td><strong>' + escapeHtml(m.name) + '</strong></td>' +
             '<td><code>' + escapeHtml(m.serverVersion) + '</code></td>' +
             '<td><code>' + escapeHtml(m.forgeVersion) + '</code></td>' +
             '<td><span class="badge ' + getBadgeClass(m) + '">' + getStatusText(m) + '</span></td>' +
-            '<td><a href="' + escapeHtml(m.url) + '" target="_blank" rel="noopener noreferrer">Forge</a></td>' +
-            '</tr>';
-    }).join('');
+            '<td><a href="' + escapeHtml(m.url) + '" target="_blank" rel="noopener noreferrer">Forge</a></td>';
+        fragment.appendChild(tr);
+    }
+    var table = document.getElementById('moduleTable');
+    table.textContent = '';
+    table.appendChild(fragment);
 }
 
 function updateSortHeaders() {
@@ -95,15 +106,13 @@ function getSortOrder(m) {
     return 0;
 }
 
-function filterTable() {
-    renderTable();
-}
-
 function updateStats() {
-    var current = modules.filter(function(m) { return m.status === 'current'; }).length;
-    var outdated = modules.filter(function(m) { return m.status === 'outdated'; }).length;
-    var errors = modules.filter(function(m) { return m.status === 'error' || m.deprecated; }).length;
-
+    var current = 0, outdated = 0, errors = 0;
+    for (var i = 0; i < modules.length; i++) {
+        if (modules[i].status === 'current') current++;
+        else if (modules[i].status === 'outdated') outdated++;
+        else if (modules[i].status === 'error' || modules[i].deprecated) errors++;
+    }
     document.getElementById('currentCount').textContent = current;
     document.getElementById('outdatedCount').textContent = outdated;
     document.getElementById('errorCount').textContent = errors;

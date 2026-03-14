@@ -25,6 +25,57 @@ function getErrorMessage(e) {
     return 'Fehler beim Laden: ' + msg;
 }
 
+// autoresearch-Pattern: Debounce für Filter-Input
+// Analog zu Gradient Accumulation - sammelt Eingaben und führt
+// die teure Operation (DOM-Update) nur einmal aus.
+function debounce(fn, delay) {
+    var timer = null;
+    return function() {
+        var context = this;
+        var args = arguments;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function() {
+            fn.apply(context, args);
+        }, delay);
+    };
+}
+
+// autoresearch-Pattern: Request-Deduplizierung
+// Verhindert parallele identische Requests (analog zu Cache-Check
+// vor Download in autoresearch's prepare.py).
+var _pendingRequests = {};
+function fetchDeduped(url) {
+    if (_pendingRequests[url]) {
+        return _pendingRequests[url];
+    }
+    var promise = fetch(url).then(function(res) {
+        delete _pendingRequests[url];
+        if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
+        return res.json();
+    }).catch(function(err) {
+        delete _pendingRequests[url];
+        throw err;
+    });
+    _pendingRequests[url] = promise;
+    return promise;
+}
+
+// autoresearch-Pattern: Prefetch für nächste Seite
+// Analog zu autoresearch's data prefetching (lädt nächsten Batch
+// während aktuelle Daten verarbeitet werden).
+function prefetchData(urls) {
+    if (!window.requestIdleCallback) {
+        // Fallback: nach kurzer Verzögerung prefetchen
+        setTimeout(function() {
+            urls.forEach(function(url) { fetchDeduped(url); });
+        }, 1000);
+        return;
+    }
+    window.requestIdleCallback(function() {
+        urls.forEach(function(url) { fetchDeduped(url); });
+    }, { timeout: 3000 });
+}
+
 // Event-Listener für Navigation (alle Seiten)
 document.addEventListener('DOMContentLoaded', function() {
     var navToggle = document.getElementById('navToggle');
