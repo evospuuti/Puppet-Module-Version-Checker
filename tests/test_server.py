@@ -617,17 +617,17 @@ def test_get_http_session_has_http_adapter():
 
 
 def test_get_http_session_pool_connections():
-    """Session hat 10 Pool-Connections konfiguriert."""
+    """Session hat 20 Pool-Connections konfiguriert."""
     session = server._get_http_session()
     adapter = session.get_adapter('https://example.com')
-    assert adapter._pool_connections == 10
+    assert adapter._pool_connections == 20
 
 
 def test_get_http_session_pool_maxsize():
-    """Session hat Pool maxsize von 10."""
+    """Session hat Pool maxsize von 20."""
     session = server._get_http_session()
     adapter = session.get_adapter('https://example.com')
-    assert adapter._pool_maxsize == 10
+    assert adapter._pool_maxsize == 20
 
 
 # ============================================================================
@@ -712,9 +712,9 @@ def test_fetch_all_data_handles_mixed_errors(mock_versions):
 # UNIT TESTS - Worker Pool Configuration
 # ============================================================================
 
-def test_max_workers_is_ten():
-    """Thread Pool hat 10 Worker (optimiert von 6)."""
-    assert server._MAX_WORKERS == 10
+def test_max_workers_is_twenty():
+    """Thread Pool hat 20 Worker für maximale Parallelisierung."""
+    assert server._MAX_WORKERS == 20
 
 
 # ============================================================================

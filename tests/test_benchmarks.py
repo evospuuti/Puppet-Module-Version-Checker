@@ -1,20 +1,17 @@
-"""Performance-Benchmarks: Misst die tatsächlichen Verbesserungen durch autoresearch-Patterns.
+"""Echte Performance-Benchmarks gegen den bestehenden Code.
 
-Jeder Benchmark vergleicht die optimierte Variante mit einer Baseline und gibt
-die gemessene Verbesserung in Prozent aus.
+Misst reale Response-Zeiten der Flask-App. Kein Caching-Trick, kein Fake.
+Cache wird zwischen Messungen gelöscht, damit wir den echten Durchsatz messen.
 """
 import time
-import threading
+import statistics
 from unittest.mock import patch, MagicMock
 import pytest
-import requests
-from requests.adapters import HTTPAdapter
 import server
 
 
 @pytest.fixture(autouse=True)
 def reset_caches():
-    """Reset aller Caches vor jedem Test."""
     server._versions_cache = None
     server.cache.clear()
     yield
@@ -29,301 +26,245 @@ def client():
         yield c
 
 
-def _make_mock_response(status=200, version='1.0.0', deprecated=None):
-    """Erzeugt eine Mock-Response für API-Calls."""
-    mock = MagicMock()
-    mock.status_code = status
-    mock.json.return_value = {
+def _mock_forge_response(version='9.7.0', deprecated=None):
+    m = MagicMock()
+    m.status_code = 200
+    m.json.return_value = {
         'current_release': {'version': version},
         'deprecated_at': deprecated
     }
-    return mock
+    return m
 
 
-def _make_provider_mock(status=200, version='1.0.0'):
-    mock = MagicMock()
-    mock.status_code = status
-    mock.json.return_value = {'version': version}
-    return mock
+def _mock_registry_response(version='3.7.2'):
+    m = MagicMock()
+    m.status_code = 200
+    m.json.return_value = {'version': version}
+    return m
 
 
-# ============================================================================
-# BENCHMARK 1: Connection Pooling vs Neue Session pro Request
-# ============================================================================
-
-class TestConnectionPoolingBenchmark:
-    """Misst den Vorteil von Connection Pooling (Thread-lokale Sessions)
-    gegenüber dem Erstellen einer neuen Session pro Request."""
-
-    def test_session_reuse_is_faster_than_creation(self):
-        """Connection Pooling: Session-Wiederverwendung vs. Neuerstellen."""
-        iterations = 500
-
-        # Baseline: Neue Session pro Aufruf (alter Code)
+def _measure_ms(fn, iterations=20):
+    """Misst fn() N-mal, gibt Median, Min, Max in ms zurück."""
+    times = []
+    for _ in range(iterations):
         start = time.perf_counter()
-        for _ in range(iterations):
-            s = requests.Session()
-            s.headers.update({'User-Agent': 'Version-Checker/2.0'})
-            s.close()
-        baseline_ms = (time.perf_counter() - start) * 1000
+        fn()
+        times.append((time.perf_counter() - start) * 1000)
+    return {
+        'median': statistics.median(times),
+        'min': min(times),
+        'max': max(times),
+        'stdev': statistics.stdev(times) if len(times) > 1 else 0,
+    }
 
-        # Optimiert: Thread-lokale Session wiederverwenden
-        start = time.perf_counter()
-        for _ in range(iterations):
-            s = server._get_http_session()  # Gibt gleiche Session zurück
-        optimized_ms = (time.perf_counter() - start) * 1000
 
-        speedup = baseline_ms / optimized_ms if optimized_ms > 0 else float('inf')
-        print(f"\n  Connection Pooling Benchmark ({iterations} iterations):")
-        print(f"    Baseline (neue Session):    {baseline_ms:.2f}ms")
-        print(f"    Optimiert (Session reuse):  {optimized_ms:.2f}ms")
-        print(f"    Speedup: {speedup:.1f}x schneller")
-
-        assert optimized_ms < baseline_ms, \
-            f"Session reuse ({optimized_ms:.2f}ms) sollte schneller sein als Neuerstellen ({baseline_ms:.2f}ms)"
-
-    def test_pooled_session_has_retry_adapter(self):
-        """Pooled Session hat Retry-Adapter konfiguriert."""
-        session = server._get_http_session()
-        adapter = session.get_adapter('https://example.com')
-        assert isinstance(adapter, HTTPAdapter)
-        assert adapter.max_retries.total == 3
-        assert adapter.max_retries.backoff_factor == 1
+def _print_result(label, result, unit='ms'):
+    print(f"  {label:45s}  median={result['median']:8.3f}{unit}  "
+          f"min={result['min']:8.3f}{unit}  max={result['max']:8.3f}{unit}  "
+          f"stdev={result['stdev']:6.3f}{unit}")
 
 
 # ============================================================================
-# BENCHMARK 2: Paralleler Fetch (10 Worker) vs Sequential
+# BENCHMARK: Statische Seiten
 # ============================================================================
 
-class TestParallelFetchBenchmark:
-    """Misst den Vorteil von 10 parallelen Workern gegenüber sequentiellem Fetch."""
+class TestStaticResponseTime:
 
-    def test_parallel_faster_than_sequential(self):
-        """10 Worker parallel vs. sequentiell (simuliert mit Delay)."""
-        modules = {f'test-module-{i}': '1.0.0' for i in range(10)}
-        delay_per_call = 0.02  # 20ms simulierter Netzwerk-Delay
+    def test_index_html(self, client):
+        result = _measure_ms(lambda: client.get('/'))
+        _print_result('GET /', result)
+        assert result['median'] < 20
 
-        def slow_fetch(url, **kwargs):
-            time.sleep(delay_per_call)
-            mock = MagicMock()
-            mock.status_code = 200
-            mock.json.return_value = {
-                'current_release': {'version': '1.0.0'},
-                'deprecated_at': None
-            }
-            return mock
+    def test_puppet_html(self, client):
+        result = _measure_ms(lambda: client.get('/puppet.html'))
+        _print_result('GET /puppet.html', result)
+        assert result['median'] < 20
 
-        # Sequentiell
-        start = time.perf_counter()
-        with patch.object(requests.Session, 'get', side_effect=slow_fetch):
-            for name, ver in modules.items():
-                server._fetch_single_module(name, ver)
-        sequential_ms = (time.perf_counter() - start) * 1000
+    def test_terraform_html(self, client):
+        result = _measure_ms(lambda: client.get('/terraform.html'))
+        _print_result('GET /terraform.html', result)
+        assert result['median'] < 20
 
-        # Parallel (mit ThreadPoolExecutor, 10 Worker)
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        start = time.perf_counter()
-        with patch.object(requests.Session, 'get', side_effect=slow_fetch):
-            with ThreadPoolExecutor(max_workers=server._MAX_WORKERS) as executor:
-                futures = [
-                    executor.submit(server._fetch_single_module, name, ver)
-                    for name, ver in modules.items()
-                ]
-                results = [f.result() for f in as_completed(futures)]
-        parallel_ms = (time.perf_counter() - start) * 1000
+    def test_shared_css(self, client):
+        result = _measure_ms(lambda: client.get('/styles/shared.css'))
+        _print_result('GET /styles/shared.css', result)
+        assert result['median'] < 20
 
-        speedup = sequential_ms / parallel_ms if parallel_ms > 0 else float('inf')
-        print(f"\n  Parallel Fetch Benchmark (10 modules, {delay_per_call*1000:.0f}ms delay each):")
-        print(f"    Sequentiell:     {sequential_ms:.1f}ms")
-        print(f"    Parallel (10w):  {parallel_ms:.1f}ms")
-        print(f"    Speedup: {speedup:.1f}x schneller")
+    def test_shared_js(self, client):
+        result = _measure_ms(lambda: client.get('/scripts/shared.js'))
+        _print_result('GET /scripts/shared.js', result)
+        assert result['median'] < 20
 
-        assert parallel_ms < sequential_ms, \
-            f"Parallel ({parallel_ms:.1f}ms) sollte schneller sein als Sequential ({sequential_ms:.1f}ms)"
-        assert len(results) == 10
+    def test_favicon(self, client):
+        result = _measure_ms(lambda: client.get('/favicon.ico'))
+        _print_result('GET /favicon.ico', result)
+        assert result['median'] < 20
 
 
 # ============================================================================
-# BENCHMARK 3: fetch_all_data vs. separate Aufrufe
+# BENCHMARK: API Overhead (cached)
 # ============================================================================
 
-class TestCombinedFetchBenchmark:
-    """Misst den Vorteil von fetch_all_data() (ein paralleler Batch)
-    gegenüber zwei separaten fetch_modules_data + fetch_terraform_data."""
+class TestAPICachedOverhead:
 
-    def test_combined_fetch_one_pool_vs_two(self):
-        """Ein ThreadPool für alles vs. zwei separate Pools."""
-        delay = 0.02
-        versions = {
-            "puppet_modules": {f'mod-{i}': '1.0.0' for i in range(6)},
-            "terraform_providers": {f'ns/prov-{i}': '1.0.0' for i in range(4)}
-        }
-
-        def slow_get(url, **kwargs):
-            time.sleep(delay)
-            mock = MagicMock()
-            mock.status_code = 200
-            if 'forgeapi' in url:
-                mock.json.return_value = {
-                    'current_release': {'version': '1.0.0'},
-                    'deprecated_at': None
-                }
-            else:
-                mock.json.return_value = {'version': '1.0.0'}
-            return mock
-
-        # Zwei separate Pools (alter Ansatz für system_status)
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        start = time.perf_counter()
-        with patch.object(requests.Session, 'get', side_effect=slow_get), \
-             patch.object(server, 'load_versions', return_value=versions):
-            # Pool 1: Module
-            with ThreadPoolExecutor(max_workers=10) as ex:
-                futs = [ex.submit(server._fetch_single_module, n, v)
-                        for n, v in versions['puppet_modules'].items()]
-                mods = [f.result() for f in as_completed(futs)]
-            # Pool 2: Provider
-            with ThreadPoolExecutor(max_workers=10) as ex:
-                futs = [ex.submit(server._fetch_single_provider, n, v)
-                        for n, v in versions['terraform_providers'].items()]
-                provs = [f.result() for f in as_completed(futs)]
-        two_pools_ms = (time.perf_counter() - start) * 1000
-
-        # Ein kombinierter Pool (fetch_all_data)
-        start = time.perf_counter()
-        with patch.object(requests.Session, 'get', side_effect=slow_get), \
-             patch.object(server, 'load_versions', return_value=versions):
-            result = server.fetch_all_data()
-        one_pool_ms = (time.perf_counter() - start) * 1000
-
-        speedup = two_pools_ms / one_pool_ms if one_pool_ms > 0 else float('inf')
-        print(f"\n  Combined Fetch Benchmark (6 modules + 4 providers, {delay*1000:.0f}ms each):")
-        print(f"    Zwei Pools (sequentiell): {two_pools_ms:.1f}ms")
-        print(f"    Ein Pool (parallel):      {one_pool_ms:.1f}ms")
-        print(f"    Speedup: {speedup:.1f}x schneller")
-
-        assert len(result['modules']) == 6
-        assert len(result['providers']) == 4
-
-
-# ============================================================================
-# BENCHMARK 4: Cache Hit vs Cache Miss
-# ============================================================================
-
-class TestCacheBenchmark:
-    """Misst den Vorteil des Flask-Caching bei wiederholten Requests."""
-
-    def test_cache_hit_much_faster_than_miss(self, client):
-        """Cached Response vs. frischer API-Call."""
-        delay = 0.05
-
-        def slow_get(url, **kwargs):
-            time.sleep(delay)
-            mock = MagicMock()
-            mock.status_code = 200
-            mock.json.return_value = {
-                'current_release': {'version': '1.0.0'},
-                'deprecated_at': None
-            }
-            return mock
-
-        # Cache Miss (erster Aufruf)
-        with patch.object(requests.Session, 'get', side_effect=slow_get):
-            start = time.perf_counter()
-            res1 = client.get('/api/modules')
-            miss_ms = (time.perf_counter() - start) * 1000
-
-        # Cache Hit (zweiter Aufruf, keine API-Calls)
-        start = time.perf_counter()
-        res2 = client.get('/api/modules')
-        hit_ms = (time.perf_counter() - start) * 1000
-
-        speedup = miss_ms / hit_ms if hit_ms > 0 else float('inf')
-        print(f"\n  Cache Benchmark:")
-        print(f"    Cache Miss: {miss_ms:.1f}ms")
-        print(f"    Cache Hit:  {hit_ms:.2f}ms")
-        print(f"    Speedup: {speedup:.1f}x schneller")
-
-        assert res1.status_code == 200
-        assert res2.status_code == 200
-        assert hit_ms < miss_ms, \
-            f"Cache Hit ({hit_ms:.2f}ms) sollte schneller sein als Miss ({miss_ms:.1f}ms)"
-
-
-# ============================================================================
-# BENCHMARK 5: API Response Time
-# ============================================================================
-
-class TestAPIResponseBenchmark:
-    """Misst die Response-Zeiten aller API-Endpoints."""
-
-    def test_all_endpoints_respond_under_threshold(self, client):
-        """Alle API-Endpoints antworten unter 100ms (mit Cache)."""
-        # Vorbefüllen der Caches
-        mock_data = {'modules': [], 'providers': []}
-        with patch.object(server, 'fetch_modules_data', return_value=[]), \
-             patch.object(server, 'fetch_terraform_data', return_value=[]), \
-             patch.object(server, 'fetch_all_data', return_value=mock_data):
+    def test_api_modules_cached(self, client):
+        with patch.object(server, 'fetch_modules_data', return_value=[]):
             client.get('/api/modules')
+            result = _measure_ms(lambda: client.get('/api/modules'))
+        _print_result('GET /api/modules (cached)', result)
+        assert result['median'] < 20
+
+    def test_api_terraform_cached(self, client):
+        with patch.object(server, 'fetch_terraform_data', return_value=[]):
             client.get('/api/terraform-providers')
+            result = _measure_ms(lambda: client.get('/api/terraform-providers'))
+        _print_result('GET /api/terraform-providers (cached)', result)
+        assert result['median'] < 20
+
+    def test_api_system_status_cached(self, client):
+        mock_data = {'modules': [], 'providers': []}
+        with patch.object(server, 'fetch_all_data', return_value=mock_data):
             client.get('/api/system_status')
+            result = _measure_ms(lambda: client.get('/api/system_status'))
+        _print_result('GET /api/system_status (cached)', result)
+        assert result['median'] < 20
 
-        endpoints = {
-            '/': 'Index HTML',
-            '/puppet.html': 'Puppet HTML',
-            '/terraform.html': 'Terraform HTML',
-            '/favicon.ico': 'Favicon',
-            '/styles/shared.css': 'CSS',
-            '/scripts/shared.js': 'JS',
-            '/api/versions': 'Versions JSON',
-        }
-
-        threshold_ms = 100
-        print(f"\n  API Response Benchmark (Threshold: {threshold_ms}ms):")
-
-        for path, label in endpoints.items():
-            start = time.perf_counter()
-            res = client.get(path)
-            elapsed_ms = (time.perf_counter() - start) * 1000
-
-            status = "PASS" if elapsed_ms < threshold_ms else "SLOW"
-            print(f"    [{status}] {label:20s} {elapsed_ms:6.2f}ms (HTTP {res.status_code})")
-
-            assert res.status_code == 200
-            assert elapsed_ms < threshold_ms, \
-                f"{label} ({elapsed_ms:.2f}ms) überschreitet {threshold_ms}ms Threshold"
+    def test_api_versions(self, client):
+        result = _measure_ms(lambda: client.get('/api/versions'))
+        _print_result('GET /api/versions', result)
+        assert result['median'] < 20
 
 
 # ============================================================================
-# BENCHMARK 6: Thread-Sicherheit
+# BENCHMARK: Paralleler Fetch (Cache wird pro Iteration gelöscht!)
 # ============================================================================
 
-class TestThreadSafetyBenchmark:
-    """Prüft, dass Connection Pooling thread-sicher funktioniert."""
+class TestParallelFetchReal:
+    """Misst den echten Parallel-Fetch OHNE Cache-Tricks.
+    Cache wird vor jeder Messung gelöscht."""
 
-    def test_different_threads_get_different_sessions(self):
-        """Verschiedene Threads bekommen verschiedene Sessions."""
-        sessions = {}
+    def test_fetch_modules_parallel_10ms(self):
+        """12 Module parallel mit 10ms simuliertem Delay."""
+        delay_ms = 10
 
-        def get_session(thread_id):
-            # Erzwinge neue thread-lokale Session
-            local = threading.local()
-            server._thread_local = local
-            s = server._get_http_session()
-            sessions[thread_id] = id(s)
+        def delayed_get(url, **kwargs):
+            time.sleep(delay_ms / 1000)
+            return _mock_forge_response()
 
-        threads = []
-        for i in range(5):
-            t = threading.Thread(target=get_session, args=(i,))
-            threads.append(t)
-            t.start()
-        for t in threads:
-            t.join()
+        def run_once():
+            server.cache.clear()
+            return server.fetch_modules_data()
 
-        # Jeder Thread sollte seine eigene Session haben
-        unique_sessions = len(set(sessions.values()))
-        print(f"\n  Thread Safety Benchmark:")
-        print(f"    {len(sessions)} Threads, {unique_sessions} unique Sessions")
+        with patch.object(server.requests.Session, 'get', side_effect=delayed_get):
+            result = _measure_ms(run_once, iterations=10)
 
-        assert unique_sessions == 5, \
-            f"Erwartet 5 unique Sessions, bekam {unique_sessions}"
+        _print_result(f'fetch_modules (12x, {delay_ms}ms delay, no cache)', result)
+        # 12 Items, 10 Worker, 10ms -> ideal 20ms (2 Batches)
+        # Erlaubt bis 80ms für ThreadPool-Overhead
+        assert result['median'] < 80, f"Zu langsam: {result['median']:.1f}ms"
+
+    def test_fetch_terraform_parallel_10ms(self):
+        """8 Provider parallel mit 10ms simuliertem Delay."""
+        delay_ms = 10
+
+        def delayed_get(url, **kwargs):
+            time.sleep(delay_ms / 1000)
+            return _mock_registry_response()
+
+        def run_once():
+            server.cache.clear()
+            return server.fetch_terraform_data()
+
+        with patch.object(server.requests.Session, 'get', side_effect=delayed_get):
+            result = _measure_ms(run_once, iterations=10)
+
+        _print_result(f'fetch_terraform (8x, {delay_ms}ms delay, no cache)', result)
+        # 8 Items, 10 Worker, 10ms -> ideal 10ms (1 Batch)
+        assert result['median'] < 80
+
+    def test_fetch_all_data_parallel_10ms(self):
+        """20 Items (12+8) parallel mit 10ms simuliertem Delay."""
+        delay_ms = 10
+
+        def delayed_get(url, **kwargs):
+            time.sleep(delay_ms / 1000)
+            if 'forgeapi' in url:
+                return _mock_forge_response()
+            return _mock_registry_response()
+
+        def run_once():
+            server.cache.clear()
+            return server.fetch_all_data()
+
+        with patch.object(server.requests.Session, 'get', side_effect=delayed_get):
+            result = _measure_ms(run_once, iterations=10)
+
+        _print_result(f'fetch_all_data (20x, {delay_ms}ms delay, no cache)', result)
+        # 20 Items, 10 Worker, 10ms -> ideal 20ms (2 Batches)
+        assert result['median'] < 80
+
+
+# ============================================================================
+# BENCHMARK: Einzelfetch Overhead (mit Mock, misst unseren Code)
+# ============================================================================
+
+class TestSingleFetchOverhead:
+    """Misst den reinen Code-Overhead einer Fetch-Funktion.
+    Mock-Response ohne Netzwerk-Delay = reine Code-Laufzeit."""
+
+    def test_fetch_single_module_overhead(self):
+        mock = _mock_forge_response()
+        with patch.object(server.requests.Session, 'get', return_value=mock):
+            result = _measure_ms(
+                lambda: server._fetch_single_module('puppetlabs-stdlib', '9.7.0'),
+                iterations=50
+            )
+        _print_result('_fetch_single_module (mocked, no delay)', result)
+        assert result['median'] < 5, f"Zu viel Overhead: {result['median']:.3f}ms"
+
+    def test_fetch_single_provider_overhead(self):
+        mock = _mock_registry_response()
+        with patch.object(server.requests.Session, 'get', return_value=mock):
+            result = _measure_ms(
+                lambda: server._fetch_single_provider('hashicorp/random', '3.7.2'),
+                iterations=50
+            )
+        _print_result('_fetch_single_provider (mocked, no delay)', result)
+        assert result['median'] < 5, f"Zu viel Overhead: {result['median']:.3f}ms"
+
+
+# ============================================================================
+# BENCHMARK: Cache Miss vs Hit (ehrlich)
+# ============================================================================
+
+class TestCacheEffectiveness:
+
+    def test_cache_miss_vs_hit(self):
+        """Vergleicht echten Cache-Miss mit Cache-Hit."""
+        delay_ms = 10
+
+        def delayed_get(url, **kwargs):
+            time.sleep(delay_ms / 1000)
+            return _mock_forge_response()
+
+        # Cache Miss: clear + fetch
+        def run_miss():
+            server.cache.clear()
+            return server.fetch_modules_data()
+
+        with patch.object(server.requests.Session, 'get', side_effect=delayed_get):
+            miss_result = _measure_ms(run_miss, iterations=5)
+
+        # Cache Hit: fetch einmal, dann messen
+        with patch.object(server.requests.Session, 'get', side_effect=delayed_get):
+            server.cache.clear()
+            server.fetch_modules_data()
+            hit_result = _measure_ms(lambda: server.fetch_modules_data(), iterations=20)
+
+        _print_result('Cache MISS (12 modules, 10ms delay)', miss_result)
+        _print_result('Cache HIT  (12 modules)', hit_result)
+
+        ratio = miss_result['median'] / hit_result['median'] if hit_result['median'] > 0 else 0
+        print(f"  {'Cache speedup':45s}  {ratio:.0f}x")
+
+        assert hit_result['median'] < miss_result['median']

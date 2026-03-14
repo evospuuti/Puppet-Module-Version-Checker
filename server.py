@@ -123,8 +123,8 @@ def _get_http_session():
         )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
-            pool_connections=10,
-            pool_maxsize=10,
+            pool_connections=20,
+            pool_maxsize=20,
         )
         session.mount("https://", adapter)
         session.mount("http://", adapter)
@@ -254,7 +254,7 @@ def _fetch_single_provider(provider_name, installed_version):
 
 # autoresearch-Pattern: Mehr Worker für bessere Parallelisierung
 # (analog zu multiprocessing.Pool für parallele Shard-Downloads)
-_MAX_WORKERS = 10
+_MAX_WORKERS = 20
 
 @cache.cached(timeout=300, key_prefix='puppet_modules_data')
 def fetch_modules_data():
