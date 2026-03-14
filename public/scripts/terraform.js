@@ -2,27 +2,48 @@ var providers = [];
 var sortColumn = 'name';
 var sortAsc = true;
 
+var debouncedFilter = debounce(function() { renderTable(); }, 150);
+
 document.addEventListener('DOMContentLoaded', function() {
     fetchProviders();
-    document.getElementById('refreshBtn').addEventListener('click', fetchProviders);
-    document.getElementById('filter').addEventListener('input', filterTable);
+    document.getElementById('refreshBtn').addEventListener('click', function() {
+        // Bei manuellem Refresh: Cache löschen und neu laden
+        try { localStorage.removeItem(_getCacheKey('/api/terraform-providers')); } catch(e) {}
+        fetchProviders();
+    });
+    document.getElementById('filter').addEventListener('input', debouncedFilter);
 });
 
-async function fetchProviders() {
-    document.getElementById('providerTable').innerHTML =
-        '<tr><td colspan="6"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>';
-    try {
-        var res = await fetch('/api/terraform-providers');
-        if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
-        providers = await res.json();
-        renderTable();
-        updateStats();
-        updateTimestamp();
-    } catch (e) {
-        console.error(e);
-        document.getElementById('providerTable').innerHTML =
-            '<tr><td colspan="6"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
-    }
+function fetchProviders() {
+    fetchSWR('/api/terraform-providers',
+        // onData: Daten anzeigen (cached oder frisch)
+        function(data, isFresh) {
+            providers = data;
+            renderTable();
+            updateStats();
+
+            var ts = document.getElementById('lastUpdated');
+            if (ts) {
+                if (isFresh) {
+                    ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+                } else {
+                    ts.innerHTML = '<span class="stale-indicator"><span class="stale-dot"></span>wird aktualisiert</span>';
+                }
+            }
+        },
+        // onError
+        function(e) {
+            console.error(e);
+            document.getElementById('providerTable').innerHTML =
+                '<tr><td colspan="6"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
+        },
+        // onLoading: Skeleton statt Spinner
+        function() {
+            var table = document.getElementById('providerTable');
+            table.textContent = '';
+            table.appendChild(createSkeletonRows(4, 6));
+        }
+    );
 }
 
 function sortBy(column) {
@@ -42,7 +63,6 @@ function renderTable() {
             p.displayName.toLowerCase().includes(filter);
     });
 
-    // Sortierung
     filtered.sort(function(a, b) {
         var valA, valB;
         if (sortColumn === 'name') { valA = a.displayName; valB = b.displayName; }
@@ -60,20 +80,24 @@ function renderTable() {
     });
 
     document.getElementById('providerCount').textContent = filtered.length + ' Provider';
-
-    // Header mit Sortier-Indikatoren aktualisieren
     updateSortHeaders();
 
-    document.getElementById('providerTable').innerHTML = filtered.map(function(p) {
-        return '<tr>' +
+    var fragment = document.createDocumentFragment();
+    for (var i = 0; i < filtered.length; i++) {
+        var p = filtered[i];
+        var tr = document.createElement('tr');
+        tr.innerHTML =
             '<td><strong>' + escapeHtml(p.displayName) + '</strong></td>' +
             '<td class="text-muted">' + escapeHtml(p.namespace) + '</td>' +
             '<td><code>' + escapeHtml(p.installedVersion) + '</code></td>' +
             '<td><code>' + escapeHtml(p.latestVersion) + '</code></td>' +
             '<td><span class="badge ' + getBadgeClass(p.status) + '">' + getStatusText(p.status) + '</span></td>' +
-            '<td><a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener noreferrer">Registry</a></td>' +
-            '</tr>';
-    }).join('');
+            '<td><a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener noreferrer">Registry</a></td>';
+        fragment.appendChild(tr);
+    }
+    var table = document.getElementById('providerTable');
+    table.textContent = '';
+    table.appendChild(fragment);
 }
 
 function updateSortHeaders() {
@@ -96,23 +120,16 @@ function getSortOrder(status) {
     return 0;
 }
 
-function filterTable() {
-    renderTable();
-}
-
 function updateStats() {
-    var current = providers.filter(function(p) { return p.status === 'current'; }).length;
-    var outdated = providers.filter(function(p) { return p.status === 'outdated'; }).length;
-    var errors = providers.filter(function(p) { return p.status === 'error'; }).length;
-
+    var current = 0, outdated = 0, errors = 0;
+    for (var i = 0; i < providers.length; i++) {
+        if (providers[i].status === 'current') current++;
+        else if (providers[i].status === 'outdated') outdated++;
+        else if (providers[i].status === 'error') errors++;
+    }
     document.getElementById('currentCount').textContent = current;
     document.getElementById('outdatedCount').textContent = outdated;
     document.getElementById('errorCount').textContent = errors;
-}
-
-function updateTimestamp() {
-    var ts = document.getElementById('lastUpdated');
-    if (ts) ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
 }
 
 function getBadgeClass(status) {

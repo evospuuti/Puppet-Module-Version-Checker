@@ -1,38 +1,65 @@
-document.addEventListener('DOMContentLoaded', loadStatus);
+document.addEventListener('DOMContentLoaded', function() {
+    loadStatus();
 
-async function loadStatus() {
-    try {
-        var res = await fetch('/api/system_status');
-        if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
-        var data = await res.json();
+    // Prefetch für Unterseiten-Daten
+    prefetchData(['/api/modules', '/api/terraform-providers']);
+});
 
-        document.getElementById('puppetStatus').textContent = data.puppet.status;
-        document.getElementById('puppetStatus').className = 'stat-value ' + getStatusClass(data.puppet.status);
+function loadStatus() {
+    fetchSWR('/api/system_status',
+        // onData: Daten anzeigen (cached oder frisch)
+        function(data, isFresh) {
+            document.getElementById('puppetStatus').textContent = data.puppet.status;
+            document.getElementById('puppetStatus').className = 'stat-value ' + getStatusClass(data.puppet.status);
 
-        document.getElementById('terraformStatus').textContent = data.terraform.status;
-        document.getElementById('terraformStatus').className = 'stat-value ' + getStatusClass(data.terraform.status);
+            document.getElementById('terraformStatus').textContent = data.terraform.status;
+            document.getElementById('terraformStatus').className = 'stat-value ' + getStatusClass(data.terraform.status);
 
-        document.getElementById('statusTable').innerHTML =
-            '<tr>' +
+            var fragment = document.createDocumentFragment();
+
+            var row1 = document.createElement('tr');
+            row1.innerHTML =
                 '<td>Puppet Module</td>' +
                 '<td><span class="badge ' + getBadgeClass(data.puppet.status) + '">' + escapeHtml(data.puppet.status) + '</span></td>' +
-                '<td>' + escapeHtml(data.puppet.details) + '</td>' +
-            '</tr>' +
-            '<tr>' +
+                '<td>' + escapeHtml(data.puppet.details) + '</td>';
+            fragment.appendChild(row1);
+
+            var row2 = document.createElement('tr');
+            row2.innerHTML =
                 '<td>Terraform Provider</td>' +
                 '<td><span class="badge ' + getBadgeClass(data.terraform.status) + '">' + escapeHtml(data.terraform.status) + '</span></td>' +
-                '<td>' + escapeHtml(data.terraform.details) + '</td>' +
-            '</tr>';
+                '<td>' + escapeHtml(data.terraform.details) + '</td>';
+            fragment.appendChild(row2);
 
-        var ts = document.getElementById('lastUpdated');
-        if (ts && data.timestamp) {
-            ts.textContent = 'Letzte Aktualisierung: ' + data.timestamp + ' UTC';
+            var table = document.getElementById('statusTable');
+            table.textContent = '';
+            table.appendChild(fragment);
+
+            var ts = document.getElementById('lastUpdated');
+            if (ts && data.timestamp) {
+                var prefix = isFresh ? 'Aktualisiert: ' : '';
+                var suffix = isFresh ? ' UTC' : ' UTC (Cache)';
+                ts.textContent = prefix + data.timestamp + suffix;
+                // Stale-Indikator
+                if (!isFresh) {
+                    ts.innerHTML = '<span class="stale-indicator"><span class="stale-dot"></span>' +
+                        escapeHtml(data.timestamp) + ' UTC &middot; wird aktualisiert</span>';
+                }
+            }
+        },
+        // onError
+        function(e) {
+            console.error(e);
+            document.getElementById('statusTable').innerHTML =
+                '<tr><td colspan="3"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
+        },
+        // onLoading: Skeleton anzeigen
+        function() {
+            var table = document.getElementById('statusTable');
+            table.textContent = '';
+            table.appendChild(createSkeletonRows(2, 3));
         }
-    } catch (e) {
-        console.error(e);
-        document.getElementById('statusTable').innerHTML =
-            '<tr><td colspan="3"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
-    }
+    );
 }
 
 function getStatusClass(status) {
