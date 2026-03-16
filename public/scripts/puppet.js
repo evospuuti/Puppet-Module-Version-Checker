@@ -90,7 +90,7 @@ function renderTable() {
             '<td><code>' + escapeHtml(m.serverVersion) + '</code></td>' +
             '<td><code>' + escapeHtml(m.forgeVersion) + '</code></td>' +
             '<td><span class="badge ' + getBadgeClass(m) + '">' + getStatusText(m) + '</span></td>' +
-            '<td><a href="' + escapeHtml(m.url) + '" target="_blank" rel="noopener noreferrer">Forge</a></td>';
+            '<td><a href="' + escapeHtml(m.url) + '" target="_blank" rel="noopener noreferrer">' + (m.url.indexOf('github.com') !== -1 ? 'GitHub' : 'Forge') + '</a></td>';
         fragment.appendChild(tr);
     }
     var table = document.getElementById('moduleTable');

@@ -11,8 +11,10 @@
     "puppetlabs-powershell": "6.1.0",
     "puppetlabs-registry": "5.0.3",
     "puppetlabs-stdlib": "9.7.0",
-    "saz-sudo": "9.0.2",
-    "puppet-puppetboard": "7.0.1"
+    "saz-sudo": "9.0.2"
+  },
+  "github_releases": {
+    "voxpupuli/puppetboard": "7.0.1"
   },
   "terraform_providers": {
     "hashicorp/azurerm": "4.55.0",

@@ -92,10 +92,10 @@ def load_versions():
             return _versions_cache
     except FileNotFoundError:
         logger.warning("versions.json not found, using empty defaults")
-        return {"puppet_modules": {}, "terraform_providers": {}}
+        return {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
     except json.JSONDecodeError as e:
         logger.error("Error parsing versions.json: %s", e)
-        return {"puppet_modules": {}, "terraform_providers": {}}
+        return {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
 
 # ============================================================================
 # CONNECTION POOLING (autoresearch-inspired: reuse connections, reduce overhead)
@@ -180,6 +180,54 @@ def _fetch_single_module(module_name, installed_version):
     return module_data
 
 
+def _fetch_single_github_release(repo_name, tracked_version):
+    """Holt die neueste Release-Version eines GitHub-Repos."""
+    release_data = {
+        'name': repo_name,
+        'serverVersion': tracked_version,
+        'forgeVersion': 'N/A',
+        'status': 'unknown',
+        'deprecated': False,
+        'url': f'https://github.com/{repo_name}'
+    }
+
+    session = _get_http_session()
+    headers = {'Accept': 'application/vnd.github+json'}
+    gh_token = os.environ.get('GITHUB_TOKEN')
+    if gh_token:
+        headers['Authorization'] = f'token {gh_token}'
+
+    try:
+        url = f'https://api.github.com/repos/{repo_name}/releases/latest'
+        response = session.get(url, timeout=10, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            tag = data.get('tag_name', '')
+            if tag:
+                latest = tag.lstrip('v')
+                release_data['forgeVersion'] = latest
+                tracked_clean = tracked_version.lstrip('v')
+                release_data['status'] = 'current' if tracked_clean == latest else 'outdated'
+        else:
+            logger.warning("GitHub API status %d for %s", response.status_code, repo_name)
+            release_data['status'] = 'error'
+            release_data['error'] = f"HTTP {response.status_code}"
+
+    except requests.Timeout:
+        release_data['status'] = 'error'
+        release_data['error'] = 'Timeout'
+    except requests.RequestException:
+        release_data['status'] = 'error'
+        release_data['error'] = 'Verbindungsfehler'
+    except Exception:
+        logger.exception("Unexpected error for GitHub repo %s", repo_name)
+        release_data['status'] = 'error'
+        release_data['error'] = 'Unerwarteter Fehler'
+
+    return release_data
+
+
 def _fetch_single_provider(provider_name, installed_version):
     """Holt Daten für einen einzelnen Terraform-Provider von der Registry."""
     parts = provider_name.split('/')
@@ -258,15 +306,20 @@ _MAX_WORKERS = 20
 
 @cache.cached(timeout=300, key_prefix='puppet_modules_data')
 def fetch_modules_data():
-    """Holt alle Puppet Module Daten parallel vom Forge (mit Cache)."""
+    """Holt alle Puppet Module + GitHub Release Daten parallel (mit Cache)."""
     versions = load_versions()
     installed_modules = versions.get('puppet_modules', {})
+    github_releases = versions.get('github_releases', {})
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
         futures = {
             executor.submit(_fetch_single_module, name, version): name
             for name, version in installed_modules.items()
         }
+        futures.update({
+            executor.submit(_fetch_single_github_release, name, version): name
+            for name, version in github_releases.items()
+        })
         results = []
         for future in as_completed(futures):
             results.append(future.result())
@@ -304,6 +357,7 @@ def fetch_all_data():
     versions = load_versions()
     installed_modules = versions.get('puppet_modules', {})
     installed_providers = versions.get('terraform_providers', {})
+    github_releases = versions.get('github_releases', {})
 
     modules = []
     providers = []
@@ -313,12 +367,16 @@ def fetch_all_data():
             executor.submit(_fetch_single_module, name, version): ('module', name)
             for name, version in installed_modules.items()
         }
+        gh_futures = {
+            executor.submit(_fetch_single_github_release, name, version): ('module', name)
+            for name, version in github_releases.items()
+        }
         provider_futures = {
             executor.submit(_fetch_single_provider, name, version): ('provider', name)
             for name, version in installed_providers.items()
         }
 
-        all_futures = {**module_futures, **provider_futures}
+        all_futures = {**module_futures, **gh_futures, **provider_futures}
         for future in as_completed(all_futures):
             kind, _name = all_futures[future]
             result = future.result()

@@ -80,14 +80,14 @@ def test_load_versions_file_not_found():
     """Gibt leere Defaults zurück wenn versions.json fehlt."""
     with patch('builtins.open', side_effect=FileNotFoundError):
         result = server.load_versions()
-    assert result == {"puppet_modules": {}, "terraform_providers": {}}
+    assert result == {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
 
 
 def test_load_versions_invalid_json():
     """Gibt leere Defaults zurück bei ungültigem JSON."""
     with patch('builtins.open', side_effect=json.JSONDecodeError("err", "", 0)):
         result = server.load_versions()
-    assert result == {"puppet_modules": {}, "terraform_providers": {}}
+    assert result == {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
 
 
 def test_load_versions_contains_puppet_modules():
