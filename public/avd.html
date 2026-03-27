@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AVD Komponenten - Version Tracker</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/shared.css">
+    <script src="/scripts/theme-init.js"></script>
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">Version Tracker</a>
+            <button class="nav-toggle" id="navToggle" aria-label="Menü">&#9776;</button>
+            <div class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/puppet.html">Puppet Module</a>
+                <a href="/avd.html" class="active">AVD Komponenten</a>
+                <button id="themeToggle" class="btn btn-secondary">Theme</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="page-header flex justify-between items-center">
+            <div>
+                <h1 class="page-title">AVD Komponenten</h1>
+                <p class="page-subtitle">Azure Virtual Desktop - Version Tracker</p>
+            </div>
+            <div class="flex items-center gap-1">
+                <span class="text-muted text-small" id="lastUpdated"></span>
+                <button id="refreshBtn" class="btn btn-primary">Aktualisieren</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value text-success" id="currentCount">-</div>
+                <div class="stat-label">Auto-gepr.</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value text-warning" id="manualCount">-</div>
+                <div class="stat-label">Manuell</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value text-danger" id="errorCount">-</div>
+                <div class="stat-label">Fehler</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="flex justify-between items-center mb-2">
+                <input type="text" id="filter" class="filter-input" placeholder="Filter...">
+                <span class="text-muted" id="componentCount"></span>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="name" data-label="Name">Name</th>
+                            <th class="sortable" data-sort="location" data-label="Ort">Ort</th>
+                            <th class="sortable" data-sort="tracked" data-label="Tracked">Tracked</th>
+                            <th class="sortable" data-sort="latest" data-label="Neueste">Neueste</th>
+                            <th class="sortable" data-sort="status" data-label="Status">Status</th>
+                            <th>Link</th>
+                        </tr>
+                    </thead>
+                    <tbody id="componentTable">
+                        <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="/scripts/shared.js"></script>
+    <script src="/scripts/avd.js"></script>
+</body>
+</html>
