@@ -38,6 +38,7 @@ def mock_versions():
         "avd_components": [
             {
                 "name": "Terraform",
+                "category": "Runner",
                 "location": "spoke/providers.tf",
                 "tracked": ">= 1.14.0",
                 "check_type": "github_release",
@@ -60,6 +61,7 @@ def multi_module_versions():
         "avd_components": [
             {
                 "name": "Terraform",
+                "category": "Runner",
                 "location": "spoke/providers.tf",
                 "tracked": ">= 1.14.0",
                 "check_type": "github_release",
@@ -68,6 +70,7 @@ def multi_module_versions():
             },
             {
                 "name": "AzureRM Provider",
+                "category": "Spoke",
                 "location": "spoke/providers.tf",
                 "tracked": "~> 4.0",
                 "check_type": "terraform_registry",
@@ -147,6 +150,14 @@ def test_load_versions_avd_components_have_check_type():
     valid_types = {'github_release', 'terraform_registry', 'manual'}
     for comp in result.get('avd_components', []):
         assert comp.get('check_type') in valid_types, f"{comp['name']} hat ungültigen check_type"
+
+
+def test_load_versions_avd_components_have_category():
+    """Alle AVD-Komponenten haben eine Kategorie."""
+    result = server.load_versions()
+    valid_categories = {'Runner', 'Spoke', 'Session Host', 'Azure Allgemein'}
+    for comp in result.get('avd_components', []):
+        assert comp.get('category') in valid_categories, f"{comp['name']} hat ungültige Kategorie"
 
 
 def test_load_versions_meta_exists():
@@ -369,12 +380,27 @@ def test_fetch_avd_component_manual():
         'tracked': 'TLS1_2',
         'check_type': 'manual',
         'check_source': None,
-        'link': None
+        'link': None,
+        'known_latest': 'TLS 1.2'
     }
     result = server._fetch_single_avd_component(comp)
     assert result['status'] == 'manual'
-    assert result['latestVersion'] == '-'
+    assert result['latestVersion'] == 'TLS 1.2'
     assert result['name'] == 'TLS Minimum'
+
+
+def test_fetch_avd_component_manual_without_known_latest():
+    """Manuelle Komponente ohne known_latest zeigt '-'."""
+    comp = {
+        'name': 'Test',
+        'location': 'test',
+        'tracked': '1.0',
+        'check_type': 'manual',
+        'check_source': None,
+        'link': ''
+    }
+    result = server._fetch_single_avd_component(comp)
+    assert result['latestVersion'] == '-'
 
 
 def test_fetch_avd_component_github_release_current():
@@ -550,8 +576,10 @@ def test_fetch_avd_component_preserves_fields():
     """Alle Felder werden korrekt im Ergebnis beibehalten."""
     comp = {
         'name': 'DSC Extension',
+        'category': 'Session Host',
         'location': 'modules/session-host/main.tf:164',
         'tracked': '2.77',
+        'known_latest': '2.77',
         'check_type': 'manual',
         'check_source': None,
         'link': 'https://learn.microsoft.com/test',
@@ -559,8 +587,10 @@ def test_fetch_avd_component_preserves_fields():
     }
     result = server._fetch_single_avd_component(comp)
     assert result['name'] == 'DSC Extension'
+    assert result['category'] == 'Session Host'
     assert result['location'] == 'modules/session-host/main.tf:164'
     assert result['tracked'] == '2.77'
+    assert result['latestVersion'] == '2.77'
     assert result['link'] == 'https://learn.microsoft.com/test'
     assert result['note'] == 'Retirement 2028-03-31'
 
@@ -1289,16 +1319,17 @@ def test_puppet_has_sortable_headers(client):
     assert b'sortable' in res.data
 
 
-def test_avd_has_filter(client):
-    """AVD-Seite hat Filter-Input."""
+def test_avd_has_category_container(client):
+    """AVD-Seite hat categoryGroups-Container."""
     res = client.get('/avd.html')
-    assert b'filter' in res.data
+    assert b'categoryGroups' in res.data
 
 
-def test_avd_has_sortable_headers(client):
-    """AVD-Seite hat sortierbare Tabellen-Header."""
+def test_avd_has_stats(client):
+    """AVD-Seite hat Stats-Bereich."""
     res = client.get('/avd.html')
-    assert b'sortable' in res.data
+    assert b'currentCount' in res.data
+    assert b'manualCount' in res.data
 
 
 def test_all_pages_have_theme_toggle(client):
@@ -1389,10 +1420,10 @@ def test_puppet_js_uses_debounced_filter(client):
     assert b'debouncedFilter' in res.data
 
 
-def test_avd_js_uses_debounced_filter(client):
-    """avd.js verwendet debouncedFilter."""
+def test_avd_js_has_category_order(client):
+    """avd.js definiert CATEGORY_ORDER."""
     res = client.get('/scripts/avd.js')
-    assert b'debouncedFilter' in res.data
+    assert b'CATEGORY_ORDER' in res.data
 
 
 def test_puppet_js_uses_document_fragment(client):
@@ -1401,10 +1432,10 @@ def test_puppet_js_uses_document_fragment(client):
     assert b'createDocumentFragment' in res.data
 
 
-def test_avd_js_uses_document_fragment(client):
-    """avd.js verwendet DocumentFragment."""
+def test_avd_js_uses_render_categories(client):
+    """avd.js verwendet renderCategories-Funktion."""
     res = client.get('/scripts/avd.js')
-    assert b'createDocumentFragment' in res.data
+    assert b'renderCategories' in res.data
 
 
 def test_puppet_js_uses_fetch_swr_not_raw_fetch(client):

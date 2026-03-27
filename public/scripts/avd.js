@@ -1,8 +1,5 @@
 var components = [];
-var sortColumn = 'name';
-var sortAsc = true;
-
-var debouncedFilter = debounce(function() { renderTable(); }, 150);
+var CATEGORY_ORDER = ['Runner', 'Spoke', 'Session Host', 'Azure Allgemein'];
 
 document.addEventListener('DOMContentLoaded', function() {
     fetchComponents();
@@ -10,14 +7,13 @@ document.addEventListener('DOMContentLoaded', function() {
         try { localStorage.removeItem(_getCacheKey('/api/avd-components')); } catch(e) {}
         fetchComponents();
     });
-    document.getElementById('filter').addEventListener('input', debouncedFilter);
 });
 
 function fetchComponents() {
     fetchSWR('/api/avd-components',
         function(data, isFresh) {
             components = data;
-            renderTable();
+            renderCategories();
             updateStats();
 
             var ts = document.getElementById('lastUpdated');
@@ -31,94 +27,85 @@ function fetchComponents() {
         },
         function(e) {
             console.error(e);
-            document.getElementById('componentTable').innerHTML =
-                '<tr><td colspan="6"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
+            document.getElementById('categoryGroups').innerHTML =
+                '<div class="card"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></div>';
         },
         function() {
-            var table = document.getElementById('componentTable');
-            table.textContent = '';
-            table.appendChild(createSkeletonRows(6, 6));
+            var container = document.getElementById('categoryGroups');
+            container.textContent = '';
+            for (var i = 0; i < CATEGORY_ORDER.length; i++) {
+                var card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = '<h3 class="category-title mb-2">' + escapeHtml(CATEGORY_ORDER[i]) + '</h3>' +
+                    '<div class="table-container"><table><thead><tr>' +
+                    '<th>Name</th><th>Ort</th><th>Tracked</th><th>Neueste</th><th>Status</th><th>Link</th>' +
+                    '</tr></thead><tbody></tbody></table></div>';
+                var tbody = card.querySelector('tbody');
+                tbody.appendChild(createSkeletonRows(2, 6));
+                container.appendChild(card);
+            }
         }
     );
 }
 
-function sortBy(column) {
-    if (sortColumn === column) {
-        sortAsc = !sortAsc;
-    } else {
-        sortColumn = column;
-        sortAsc = true;
+function renderCategories() {
+    var grouped = {};
+    for (var i = 0; i < CATEGORY_ORDER.length; i++) {
+        grouped[CATEGORY_ORDER[i]] = [];
     }
-    renderTable();
-}
+    for (var j = 0; j < components.length; j++) {
+        var cat = components[j].category || 'Azure Allgemein';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(components[j]);
+    }
 
-function renderTable() {
-    var filter = document.getElementById('filter').value.toLowerCase();
-    var filtered = components.filter(function(c) {
-        return c.name.toLowerCase().includes(filter) ||
-            c.location.toLowerCase().includes(filter) ||
-            c.tracked.toLowerCase().includes(filter);
-    });
+    var container = document.getElementById('categoryGroups');
+    container.textContent = '';
 
-    filtered.sort(function(a, b) {
-        var valA, valB;
-        if (sortColumn === 'name') { valA = a.name; valB = b.name; }
-        else if (sortColumn === 'location') { valA = a.location; valB = b.location; }
-        else if (sortColumn === 'tracked') { valA = a.tracked; valB = b.tracked; }
-        else if (sortColumn === 'latest') { valA = a.latestVersion; valB = b.latestVersion; }
-        else if (sortColumn === 'status') { valA = getSortOrder(a.status); valB = getSortOrder(b.status); }
-        else { valA = a.name; valB = b.name; }
+    for (var k = 0; k < CATEGORY_ORDER.length; k++) {
+        var catName = CATEGORY_ORDER[k];
+        var items = grouped[catName];
+        if (!items || items.length === 0) continue;
 
-        if (typeof valA === 'string') {
-            var cmp = valA.localeCompare(valB);
-            return sortAsc ? cmp : -cmp;
+        var card = document.createElement('div');
+        card.className = 'card';
+
+        var title = document.createElement('h3');
+        title.className = 'category-title mb-2';
+        title.textContent = catName;
+        card.appendChild(title);
+
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'table-container';
+        var table = document.createElement('table');
+        table.innerHTML =
+            '<thead><tr>' +
+            '<th>Name</th><th>Ort</th><th>Tracked</th><th>Neueste</th><th>Status</th><th>Link</th>' +
+            '</tr></thead>';
+        var tbody = document.createElement('tbody');
+
+        for (var m = 0; m < items.length; m++) {
+            var c = items[m];
+            var noteHtml = c.note ? ' <span class="text-muted text-small">(' + escapeHtml(c.note) + ')</span>' : '';
+            var linkHtml = c.link
+                ? '<a href="' + escapeHtml(c.link) + '" target="_blank" rel="noopener noreferrer">Docs</a>'
+                : '-';
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><strong>' + escapeHtml(c.name) + '</strong>' + noteHtml + '</td>' +
+                '<td class="text-muted"><code>' + escapeHtml(c.location) + '</code></td>' +
+                '<td><code>' + escapeHtml(c.tracked) + '</code></td>' +
+                '<td><code>' + escapeHtml(c.latestVersion) + '</code></td>' +
+                '<td><span class="badge ' + getBadgeClass(c.status) + '">' + getStatusText(c.status) + '</span></td>' +
+                '<td>' + linkHtml + '</td>';
+            tbody.appendChild(tr);
         }
-        return sortAsc ? valA - valB : valB - valA;
-    });
 
-    document.getElementById('componentCount').textContent = filtered.length + ' Komponenten';
-    updateSortHeaders();
-
-    var fragment = document.createDocumentFragment();
-    for (var i = 0; i < filtered.length; i++) {
-        var c = filtered[i];
-        var noteHtml = c.note ? ' <span class="text-muted text-small">(' + escapeHtml(c.note) + ')</span>' : '';
-        var linkHtml = c.link
-            ? '<a href="' + escapeHtml(c.link) + '" target="_blank" rel="noopener noreferrer">Docs</a>'
-            : '-';
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td><strong>' + escapeHtml(c.name) + '</strong>' + noteHtml + '</td>' +
-            '<td class="text-muted"><code>' + escapeHtml(c.location) + '</code></td>' +
-            '<td><code>' + escapeHtml(c.tracked) + '</code></td>' +
-            '<td><code>' + escapeHtml(c.latestVersion) + '</code></td>' +
-            '<td><span class="badge ' + getBadgeClass(c.status) + '">' + getStatusText(c.status) + '</span></td>' +
-            '<td>' + linkHtml + '</td>';
-        fragment.appendChild(tr);
+        table.appendChild(tbody);
+        tableWrap.appendChild(table);
+        card.appendChild(tableWrap);
+        container.appendChild(card);
     }
-    var table = document.getElementById('componentTable');
-    table.textContent = '';
-    table.appendChild(fragment);
-}
-
-function updateSortHeaders() {
-    var headers = document.querySelectorAll('th[data-sort]');
-    for (var i = 0; i < headers.length; i++) {
-        var th = headers[i];
-        var col = th.getAttribute('data-sort');
-        var base = th.getAttribute('data-label');
-        if (col === sortColumn) {
-            th.textContent = base + (sortAsc ? ' \u25B2' : ' \u25BC');
-        } else {
-            th.textContent = base;
-        }
-    }
-}
-
-function getSortOrder(status) {
-    if (status === 'error') return 2;
-    if (status === 'manual') return 1;
-    return 0;
 }
 
 function updateStats() {
