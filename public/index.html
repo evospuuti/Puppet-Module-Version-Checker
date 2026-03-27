@@ -7,10 +7,9 @@
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
     <!-- autoresearch-Pattern: DNS-Prefetch & Preconnect für externe APIs -->
     <link rel="dns-prefetch" href="https://forgeapi.puppet.com">
-    <link rel="dns-prefetch" href="https://registry.terraform.io">
     <!-- Prefetch Detail-Seiten für schnellere Navigation -->
     <link rel="prefetch" href="/puppet.html">
-    <link rel="prefetch" href="/terraform.html">
+    <link rel="prefetch" href="/avd.html">
     <link rel="stylesheet" href="/styles/shared.css">
     <script src="/scripts/theme-init.js"></script>
 </head>
@@ -22,7 +21,7 @@
             <div class="nav-links">
                 <a href="/" class="active">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
-                <a href="/terraform.html">Terraform Provider</a>
+                <a href="/avd.html">AVD Komponenten</a>
                 <button id="themeToggle" class="btn btn-secondary">Theme</button>
             </div>
         </div>
@@ -40,8 +39,8 @@
                 <div class="stat-label">Puppet Module</div>
             </div>
             <div class="stat">
-                <div class="stat-value" id="terraformStatus">-</div>
-                <div class="stat-label">Terraform Provider</div>
+                <div class="stat-value" id="avdStatus">-</div>
+                <div class="stat-label">AVD Komponenten</div>
             </div>
         </div>
 
@@ -50,9 +49,9 @@
                 <h3 class="mb-1">Puppet Module</h3>
                 <p class="text-muted">Vergleich zwischen installierten und aktuellen Forge-Versionen</p>
             </a>
-            <a href="/terraform.html" class="card card-link">
-                <h3 class="mb-1">Terraform Provider</h3>
-                <p class="text-muted">Vergleich zwischen installierten und aktuellen Registry-Versionen</p>
+            <a href="/avd.html" class="card card-link">
+                <h3 class="mb-1">AVD Komponenten</h3>
+                <p class="text-muted">Azure Virtual Desktop - Versions-Tracking aller Komponenten</p>
             </a>
         </div>
 

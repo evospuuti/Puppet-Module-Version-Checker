@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadStatus();
 
     // Prefetch für Unterseiten-Daten
-    prefetchData(['/api/modules', '/api/terraform-providers']);
+    prefetchData(['/api/modules', '/api/avd-components']);
 });
 
 function loadStatus() {
@@ -12,8 +12,8 @@ function loadStatus() {
             document.getElementById('puppetStatus').textContent = data.puppet.status;
             document.getElementById('puppetStatus').className = 'stat-value ' + getStatusClass(data.puppet.status);
 
-            document.getElementById('terraformStatus').textContent = data.terraform.status;
-            document.getElementById('terraformStatus').className = 'stat-value ' + getStatusClass(data.terraform.status);
+            document.getElementById('avdStatus').textContent = data.avd.status;
+            document.getElementById('avdStatus').className = 'stat-value ' + getStatusClass(data.avd.status);
 
             var fragment = document.createDocumentFragment();
 
@@ -26,9 +26,9 @@ function loadStatus() {
 
             var row2 = document.createElement('tr');
             row2.innerHTML =
-                '<td>Terraform Provider</td>' +
-                '<td><span class="badge ' + getBadgeClass(data.terraform.status) + '">' + escapeHtml(data.terraform.status) + '</span></td>' +
-                '<td>' + escapeHtml(data.terraform.details) + '</td>';
+                '<td>AVD Komponenten</td>' +
+                '<td><span class="badge ' + getBadgeClass(data.avd.status) + '">' + escapeHtml(data.avd.status) + '</span></td>' +
+                '<td>' + escapeHtml(data.avd.details) + '</td>';
             fragment.appendChild(row2);
 
             var table = document.getElementById('statusTable');

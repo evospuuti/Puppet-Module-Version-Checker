@@ -35,25 +35,46 @@ def mock_versions():
         "puppet_modules": {
             "puppetlabs-stdlib": "9.7.0"
         },
-        "terraform_providers": {
-            "hashicorp/random": "3.7.2"
-        }
+        "avd_components": [
+            {
+                "name": "Terraform",
+                "location": "spoke/providers.tf",
+                "tracked": ">= 1.14.0",
+                "check_type": "github_release",
+                "check_source": "hashicorp/terraform",
+                "link": "https://github.com/hashicorp/terraform/releases"
+            }
+        ]
     }
 
 
 @pytest.fixture
 def multi_module_versions():
-    """Versions mit mehreren Modulen und Providern."""
+    """Versions mit mehreren Modulen und AVD-Komponenten."""
     return {
         "puppet_modules": {
             "puppetlabs-stdlib": "9.7.0",
             "puppetlabs-apt": "11.1.0",
             "puppet-archive": "8.1.0",
         },
-        "terraform_providers": {
-            "hashicorp/random": "3.7.2",
-            "hashicorp/azurerm": "4.55.0",
-        }
+        "avd_components": [
+            {
+                "name": "Terraform",
+                "location": "spoke/providers.tf",
+                "tracked": ">= 1.14.0",
+                "check_type": "github_release",
+                "check_source": "hashicorp/terraform",
+                "link": "https://github.com/hashicorp/terraform/releases"
+            },
+            {
+                "name": "AzureRM Provider",
+                "location": "spoke/providers.tf",
+                "tracked": "~> 4.0",
+                "check_type": "terraform_registry",
+                "check_source": "hashicorp/azurerm",
+                "link": "https://github.com/hashicorp/terraform-provider-azurerm/releases"
+            }
+        ]
     }
 
 
@@ -66,7 +87,7 @@ def test_load_versions_returns_dict():
     result = server.load_versions()
     assert isinstance(result, dict)
     assert 'puppet_modules' in result
-    assert 'terraform_providers' in result
+    assert 'avd_components' in result
 
 
 def test_load_versions_caches_result():
@@ -80,14 +101,14 @@ def test_load_versions_file_not_found():
     """Gibt leere Defaults zurück wenn versions.json fehlt."""
     with patch('builtins.open', side_effect=FileNotFoundError):
         result = server.load_versions()
-    assert result == {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
+    assert result == {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
 
 
 def test_load_versions_invalid_json():
     """Gibt leere Defaults zurück bei ungültigem JSON."""
     with patch('builtins.open', side_effect=json.JSONDecodeError("err", "", 0)):
         result = server.load_versions()
-    assert result == {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
+    assert result == {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
 
 
 def test_load_versions_contains_puppet_modules():
@@ -97,11 +118,11 @@ def test_load_versions_contains_puppet_modules():
     assert len(modules) > 0
 
 
-def test_load_versions_contains_terraform_providers():
-    """versions.json enthält Terraform Provider."""
+def test_load_versions_contains_avd_components():
+    """versions.json enthält AVD-Komponenten."""
     result = server.load_versions()
-    providers = result.get('terraform_providers', {})
-    assert len(providers) > 0
+    components = result.get('avd_components', [])
+    assert len(components) > 0
 
 
 def test_load_versions_puppet_modules_have_versions():
@@ -112,19 +133,20 @@ def test_load_versions_puppet_modules_have_versions():
         assert len(version) > 0, f"{name} hat leere Version"
 
 
-def test_load_versions_terraform_providers_have_versions():
-    """Alle Terraform Provider haben eine Versionsangabe."""
+def test_load_versions_avd_components_have_names():
+    """Alle AVD-Komponenten haben einen Namen."""
     result = server.load_versions()
-    for name, version in result.get('terraform_providers', {}).items():
-        assert isinstance(version, str), f"{name} hat keine String-Version"
-        assert len(version) > 0, f"{name} hat leere Version"
+    for comp in result.get('avd_components', []):
+        assert 'name' in comp, "AVD-Komponente ohne Name"
+        assert len(comp['name']) > 0, "AVD-Komponente mit leerem Namen"
 
 
-def test_load_versions_terraform_providers_have_slash():
-    """Alle Terraform Provider-Namen enthalten einen /."""
+def test_load_versions_avd_components_have_check_type():
+    """Alle AVD-Komponenten haben einen check_type."""
     result = server.load_versions()
-    for name in result.get('terraform_providers', {}).keys():
-        assert '/' in name, f"{name} hat kein / (namespace/name erwartet)"
+    valid_types = {'github_release', 'terraform_registry', 'manual'}
+    for comp in result.get('avd_components', []):
+        assert comp.get('check_type') in valid_types, f"{comp['name']} hat ungültigen check_type"
 
 
 def test_load_versions_meta_exists():
@@ -336,221 +358,225 @@ def test_fetch_single_module_default_values():
 
 
 # ============================================================================
-# UNIT TESTS - _fetch_single_provider
+# UNIT TESTS - _fetch_single_avd_component
 # ============================================================================
 
-def test_fetch_single_provider_current():
-    """Provider wird als 'current' erkannt bei gleicher Version."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '3.7.2'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
-
-    assert result['status'] == 'current'
-    assert result['displayName'] == 'random'
-    assert result['namespace'] == 'hashicorp'
-
-
-def test_fetch_single_provider_outdated():
-    """Provider wird als 'outdated' erkannt bei Versionsunterschied."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '4.0.0'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
-
-    assert result['status'] == 'outdated'
-    assert result['latestVersion'] == '4.0.0'
-
-
-def test_fetch_single_provider_invalid_name():
-    """Ungültiger Provider-Name gibt Error-Status zurück."""
-    result = server._fetch_single_provider('invalid-no-slash', '1.0.0')
-    assert result['status'] == 'error'
-    assert 'Ungültiger Provider-Name' in result['error']
-
-
-def test_fetch_single_provider_empty_name():
-    """Leerer Provider-Name gibt Error-Status zurück."""
-    result = server._fetch_single_provider('', '1.0.0')
-    assert result['status'] == 'error'
-
-
-def test_fetch_single_provider_too_many_slashes():
-    """Provider-Name mit mehreren / gibt Error-Status zurück."""
-    result = server._fetch_single_provider('a/b/c', '1.0.0')
-    assert result['status'] == 'error'
-
-
-def test_fetch_single_provider_strips_v_prefix():
-    """Version mit 'v'-Prefix wird korrekt verglichen."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': 'v3.7.2'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', 'v3.7.2')
-
-    assert result['status'] == 'current'
-
-
-def test_fetch_single_provider_strips_v_prefix_installed_only():
-    """v-Prefix nur bei installed, aber nicht bei latest."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '3.7.2'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', 'v3.7.2')
-
-    assert result['status'] == 'current'
-
-
-def test_fetch_single_provider_strips_v_prefix_latest_only():
-    """v-Prefix nur bei latest, aber nicht bei installed."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': 'v3.7.2'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
-
-    assert result['status'] == 'current'
-
-
-def test_fetch_single_provider_timeout():
-    """Timeout wird als Error-Status zurückgegeben."""
-    with patch.object(server.requests.Session, 'get', side_effect=server.requests.Timeout):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
-
-    assert result['status'] == 'error'
-    assert result['error'] == 'Timeout'
-
-
-def test_fetch_single_provider_with_metadata():
-    """Provider-Metadaten (description, source, publishedAt) werden übernommen."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'version': '3.7.2',
-        'description': 'Random provider',
-        'source': 'https://github.com/hashicorp/terraform-provider-random',
-        'published_at': '2024-01-15T00:00:00Z'
+def test_fetch_avd_component_manual():
+    """Manuelle Komponente gibt status 'manual' zurück."""
+    comp = {
+        'name': 'TLS Minimum',
+        'location': 'modules/storage/main.tf:22',
+        'tracked': 'TLS1_2',
+        'check_type': 'manual',
+        'check_source': None,
+        'link': None
     }
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
-
-    assert result['description'] == 'Random provider'
-    assert result['source'] == 'https://github.com/hashicorp/terraform-provider-random'
-    assert result['publishedAt'] == '2024-01-15T00:00:00Z'
+    result = server._fetch_single_avd_component(comp)
+    assert result['status'] == 'manual'
+    assert result['latestVersion'] == '-'
+    assert result['name'] == 'TLS Minimum'
 
 
-def test_fetch_single_provider_without_optional_metadata():
-    """Provider ohne optionale Metadaten hat keine entsprechenden Keys."""
+def test_fetch_avd_component_github_release_current():
+    """GitHub-Release Komponente wird als 'current' erkannt."""
+    comp = {
+        'name': 'Terraform',
+        'location': 'spoke/providers.tf',
+        'tracked': '>= 1.14.0',
+        'check_type': 'github_release',
+        'check_source': 'hashicorp/terraform',
+        'link': 'https://github.com/hashicorp/terraform/releases'
+    }
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '3.7.2'}
+    mock_response.json.return_value = {'tag_name': 'v1.14.8'}
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
+        result = server._fetch_single_avd_component(comp)
 
-    assert 'description' not in result
-    assert 'source' not in result
-    assert 'publishedAt' not in result
-
-
-def test_fetch_single_provider_connection_error():
-    """Verbindungsfehler wird korrekt behandelt."""
-    with patch.object(server.requests.Session, 'get',
-                      side_effect=server.requests.ConnectionError):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
-
-    assert result['status'] == 'error'
-    assert result['error'] == 'Verbindungsfehler'
+    assert result['status'] == 'current'
+    assert result['latestVersion'] == '1.14.8'
 
 
-def test_fetch_single_provider_http_500():
-    """HTTP 500 wird als Error-Status zurückgegeben."""
+def test_fetch_avd_component_github_release_strips_v():
+    """GitHub-Release: v-Prefix wird entfernt."""
+    comp = {
+        'name': 'PowerShell',
+        'location': 'Runner',
+        'tracked': '7.x',
+        'check_type': 'github_release',
+        'check_source': 'PowerShell/PowerShell',
+        'link': 'https://github.com/PowerShell/PowerShell/releases'
+    }
     mock_response = MagicMock()
-    mock_response.status_code = 500
+    mock_response.status_code = 200
+    mock_response.json.return_value = {'tag_name': 'v7.5.1'}
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
+        result = server._fetch_single_avd_component(comp)
 
-    assert result['status'] == 'error'
-    assert 'HTTP 500' in result['error']
+    assert result['latestVersion'] == '7.5.1'
 
 
-def test_fetch_single_provider_http_404():
-    """HTTP 404 wird als Error-Status zurückgegeben."""
+def test_fetch_avd_component_github_release_http_error():
+    """GitHub-Release: HTTP-Fehler wird als Error-Status zurückgegeben."""
+    comp = {
+        'name': 'Terraform',
+        'location': 'spoke/providers.tf',
+        'tracked': '>= 1.14.0',
+        'check_type': 'github_release',
+        'check_source': 'hashicorp/terraform',
+        'link': 'https://github.com/hashicorp/terraform/releases'
+    }
     mock_response = MagicMock()
     mock_response.status_code = 404
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/nonexistent', '1.0.0')
+        result = server._fetch_single_avd_component(comp)
 
     assert result['status'] == 'error'
     assert 'HTTP 404' in result['error']
 
 
-def test_fetch_single_provider_url_format():
-    """Provider-URL wird korrekt formatiert."""
+def test_fetch_avd_component_terraform_registry_current():
+    """Terraform-Registry Komponente wird als 'current' erkannt."""
+    comp = {
+        'name': 'AzureRM Provider',
+        'location': 'spoke/providers.tf',
+        'tracked': '~> 4.0',
+        'check_type': 'terraform_registry',
+        'check_source': 'hashicorp/azurerm',
+        'link': 'https://github.com/hashicorp/terraform-provider-azurerm/releases'
+    }
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '1.0.0'}
+    mock_response.json.return_value = {'version': '4.66.0'}
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/azurerm', '1.0.0')
+        result = server._fetch_single_avd_component(comp)
 
-    assert result['url'] == 'https://registry.terraform.io/providers/hashicorp/azurerm'
+    assert result['status'] == 'current'
+    assert result['latestVersion'] == '4.66.0'
 
 
-def test_fetch_single_provider_preserves_installed_version():
-    """Installed version wird im Ergebnis beibehalten."""
+def test_fetch_avd_component_terraform_registry_invalid_name():
+    """Terraform-Registry: Ungültiger Provider-Name gibt Error zurück."""
+    comp = {
+        'name': 'Bad Provider',
+        'location': 'test',
+        'tracked': '1.0',
+        'check_type': 'terraform_registry',
+        'check_source': 'invalid-no-slash',
+        'link': ''
+    }
+    result = server._fetch_single_avd_component(comp)
+    assert result['status'] == 'error'
+    assert 'Ungültiger Provider-Name' in result['error']
+
+
+def test_fetch_avd_component_terraform_registry_http_error():
+    """Terraform-Registry: HTTP-Fehler wird als Error-Status zurückgegeben."""
+    comp = {
+        'name': 'AzureRM Provider',
+        'location': 'spoke/providers.tf',
+        'tracked': '~> 4.0',
+        'check_type': 'terraform_registry',
+        'check_source': 'hashicorp/azurerm',
+        'link': ''
+    }
     mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '1.0.0'}
+    mock_response.status_code = 500
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '3.7.2')
+        result = server._fetch_single_avd_component(comp)
 
-    assert result['installedVersion'] == '3.7.2'
-
-
-def test_fetch_single_provider_missing_version_in_response():
-    """Fehlende version im Response führt zu unknown Status."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_provider('hashicorp/random', '1.0.0')
-
-    assert result['status'] == 'unknown'
-    assert result['latestVersion'] == 'N/A'
+    assert result['status'] == 'error'
+    assert 'HTTP 500' in result['error']
 
 
-def test_fetch_single_provider_unexpected_exception():
+def test_fetch_avd_component_timeout():
+    """Timeout wird als Error-Status zurückgegeben."""
+    comp = {
+        'name': 'Terraform',
+        'location': 'test',
+        'tracked': '1.0',
+        'check_type': 'github_release',
+        'check_source': 'hashicorp/terraform',
+        'link': ''
+    }
+    with patch.object(server.requests.Session, 'get', side_effect=server.requests.Timeout):
+        result = server._fetch_single_avd_component(comp)
+
+    assert result['status'] == 'error'
+    assert result['error'] == 'Timeout'
+
+
+def test_fetch_avd_component_connection_error():
+    """Verbindungsfehler wird korrekt behandelt."""
+    comp = {
+        'name': 'Terraform',
+        'location': 'test',
+        'tracked': '1.0',
+        'check_type': 'github_release',
+        'check_source': 'hashicorp/terraform',
+        'link': ''
+    }
+    with patch.object(server.requests.Session, 'get',
+                      side_effect=server.requests.ConnectionError):
+        result = server._fetch_single_avd_component(comp)
+
+    assert result['status'] == 'error'
+    assert result['error'] == 'Verbindungsfehler'
+
+
+def test_fetch_avd_component_unexpected_exception():
     """Unerwartete Exception wird als Error behandelt."""
+    comp = {
+        'name': 'Terraform',
+        'location': 'test',
+        'tracked': '1.0',
+        'check_type': 'github_release',
+        'check_source': 'hashicorp/terraform',
+        'link': ''
+    }
     with patch.object(server.requests.Session, 'get', side_effect=RuntimeError('oops')):
-        result = server._fetch_single_provider('hashicorp/random', '1.0.0')
+        result = server._fetch_single_avd_component(comp)
 
     assert result['status'] == 'error'
     assert result['error'] == 'Unerwarteter Fehler'
 
 
-def test_fetch_single_provider_invalid_name_preserves_data():
-    """Ungültiger Name: Felder werden korrekt befüllt."""
-    result = server._fetch_single_provider('badname', '1.0.0')
-    assert result['name'] == 'badname'
-    assert result['displayName'] == 'badname'
-    assert result['namespace'] == ''
-    assert result['installedVersion'] == '1.0.0'
-    assert result['url'] == ''
+def test_fetch_avd_component_preserves_fields():
+    """Alle Felder werden korrekt im Ergebnis beibehalten."""
+    comp = {
+        'name': 'DSC Extension',
+        'location': 'modules/session-host/main.tf:164',
+        'tracked': '2.77',
+        'check_type': 'manual',
+        'check_source': None,
+        'link': 'https://learn.microsoft.com/test',
+        'note': 'Retirement 2028-03-31'
+    }
+    result = server._fetch_single_avd_component(comp)
+    assert result['name'] == 'DSC Extension'
+    assert result['location'] == 'modules/session-host/main.tf:164'
+    assert result['tracked'] == '2.77'
+    assert result['link'] == 'https://learn.microsoft.com/test'
+    assert result['note'] == 'Retirement 2028-03-31'
+
+
+def test_fetch_avd_component_default_note():
+    """Fehlende note gibt leeren String zurück."""
+    comp = {
+        'name': 'Test',
+        'location': 'test',
+        'tracked': '1.0',
+        'check_type': 'manual',
+        'check_source': None,
+        'link': ''
+    }
+    result = server._fetch_single_avd_component(comp)
+    assert result['note'] == ''
 
 
 # ============================================================================
@@ -635,35 +661,35 @@ def test_get_http_session_pool_maxsize():
 # ============================================================================
 
 def test_fetch_all_data_returns_both(mock_versions):
-    """fetch_all_data gibt modules und providers zurück."""
+    """fetch_all_data gibt modules und avd_components zurück."""
     mock_module = MagicMock()
     mock_module.status_code = 200
     mock_module.json.return_value = {
         'current_release': {'version': '9.7.0'},
         'deprecated_at': None
     }
-    mock_provider = MagicMock()
-    mock_provider.status_code = 200
-    mock_provider.json.return_value = {'version': '3.7.2'}
+    mock_gh = MagicMock()
+    mock_gh.status_code = 200
+    mock_gh.json.return_value = {'tag_name': 'v1.14.8'}
 
     with patch.object(server, 'load_versions', return_value=mock_versions), \
          patch.object(server.requests.Session, 'get',
-                      side_effect=[mock_module, mock_provider]):
+                      side_effect=[mock_module, mock_gh]):
         result = server.fetch_all_data()
 
     assert 'modules' in result
-    assert 'providers' in result
+    assert 'avd_components' in result
     assert len(result['modules']) == 1
-    assert len(result['providers']) == 1
+    assert len(result['avd_components']) == 1
 
 
 def test_fetch_all_data_empty_versions():
     """fetch_all_data mit leeren Versionen gibt leere Listen zurück."""
     with patch.object(server, 'load_versions',
-                      return_value={"puppet_modules": {}, "terraform_providers": {}}):
+                      return_value={"puppet_modules": {}, "avd_components": []}):
         result = server.fetch_all_data()
 
-    assert result == {'modules': [], 'providers': []}
+    assert result == {'modules': [], 'avd_components': []}
 
 
 def test_fetch_all_data_multiple_items(multi_module_versions):
@@ -673,6 +699,7 @@ def test_fetch_all_data_multiple_items(multi_module_versions):
     mock_response.json.return_value = {
         'current_release': {'version': '1.0.0'},
         'deprecated_at': None,
+        'tag_name': 'v1.0.0',
         'version': '1.0.0'
     }
 
@@ -681,7 +708,7 @@ def test_fetch_all_data_multiple_items(multi_module_versions):
         result = server.fetch_all_data()
 
     assert len(result['modules']) == 3
-    assert len(result['providers']) == 2
+    assert len(result['avd_components']) == 2
 
 
 def test_fetch_all_data_handles_mixed_errors(mock_versions):
@@ -703,9 +730,9 @@ def test_fetch_all_data_handles_mixed_errors(mock_versions):
         result = server.fetch_all_data()
 
     assert len(result['modules']) == 1
-    assert len(result['providers']) == 1
+    assert len(result['avd_components']) == 1
     assert result['modules'][0]['status'] == 'current'
-    assert result['providers'][0]['status'] == 'error'
+    assert result['avd_components'][0]['status'] == 'error'
 
 
 # ============================================================================
@@ -748,39 +775,39 @@ def test_api_modules_with_data(client):
     assert data[0]['name'] == 'test'
 
 
-def test_api_terraform_providers_returns_json(client):
-    """GET /api/terraform-providers gibt JSON zurück."""
-    with patch.object(server, 'fetch_terraform_data', return_value=[]):
-        res = client.get('/api/terraform-providers')
+def test_api_avd_components_returns_json(client):
+    """GET /api/avd-components gibt JSON zurück."""
+    with patch.object(server, 'fetch_avd_data', return_value=[]):
+        res = client.get('/api/avd-components')
     assert res.status_code == 200
     assert res.content_type == 'application/json'
 
 
-def test_api_terraform_providers_returns_list(client):
-    """GET /api/terraform-providers gibt eine Liste zurück."""
-    with patch.object(server, 'fetch_terraform_data', return_value=[]):
-        res = client.get('/api/terraform-providers')
+def test_api_avd_components_returns_list(client):
+    """GET /api/avd-components gibt eine Liste zurück."""
+    with patch.object(server, 'fetch_avd_data', return_value=[]):
+        res = client.get('/api/avd-components')
     assert isinstance(res.get_json(), list)
 
 
 def test_api_system_status_returns_all_fields(client):
-    """GET /api/system_status enthält puppet, terraform und timestamp."""
+    """GET /api/system_status enthält puppet, avd und timestamp."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'providers': []}):
+                      return_value={'modules': [], 'avd_components': []}):
         res = client.get('/api/system_status')
 
     data = res.get_json()
     assert 'puppet' in data
-    assert 'terraform' in data
+    assert 'avd' in data
     assert 'timestamp' in data
     assert data['puppet']['status'] == 'OK'
-    assert data['terraform']['status'] == 'OK'
+    assert data['avd']['status'] == 'OK'
 
 
 def test_api_system_status_timestamp_format(client):
     """Timestamp hat Format YYYY-MM-DD HH:MM:SS."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'providers': []}):
+                      return_value={'modules': [], 'avd_components': []}):
         res = client.get('/api/system_status')
     data = res.get_json()
     # Prüfe Format: "2026-03-14 12:00:00"
@@ -792,21 +819,21 @@ def test_api_system_status_timestamp_format(client):
 def test_api_system_status_puppet_has_status_and_details(client):
     """Puppet-Status enthält status und details."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'providers': []}):
+                      return_value={'modules': [], 'avd_components': []}):
         res = client.get('/api/system_status')
     data = res.get_json()
     assert 'status' in data['puppet']
     assert 'details' in data['puppet']
 
 
-def test_api_system_status_terraform_has_status_and_details(client):
-    """Terraform-Status enthält status und details."""
+def test_api_system_status_avd_has_status_and_details(client):
+    """AVD-Status enthält status und details."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'providers': []}):
+                      return_value={'modules': [], 'avd_components': []}):
         res = client.get('/api/system_status')
     data = res.get_json()
-    assert 'status' in data['terraform']
-    assert 'details' in data['terraform']
+    assert 'status' in data['avd']
+    assert 'details' in data['avd']
 
 
 def test_api_system_status_detects_outdated(client):
@@ -816,7 +843,7 @@ def test_api_system_status_detects_outdated(client):
             {'status': 'current', 'deprecated': False},
             {'status': 'outdated', 'deprecated': False},
         ],
-        'providers': []
+        'avd_components': []
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -834,7 +861,7 @@ def test_api_system_status_detects_multiple_outdated(client):
             {'status': 'outdated', 'deprecated': False},
             {'status': 'outdated', 'deprecated': False},
         ],
-        'providers': []
+        'avd_components': []
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -850,7 +877,7 @@ def test_api_system_status_detects_deprecated(client):
             {'status': 'outdated', 'deprecated': True},
             {'status': 'outdated', 'deprecated': False},
         ],
-        'providers': []
+        'avd_components': []
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -859,11 +886,11 @@ def test_api_system_status_detects_deprecated(client):
     assert data['puppet']['status'] == 'Warnung'
 
 
-def test_api_system_status_detects_terraform_errors(client):
-    """System-Status erkennt Terraform-Provider Fehler."""
+def test_api_system_status_detects_avd_errors(client):
+    """System-Status erkennt AVD-Komponenten Fehler."""
     mock_data = {
         'modules': [],
-        'providers': [
+        'avd_components': [
             {'status': 'current'},
             {'status': 'error'},
         ]
@@ -872,55 +899,56 @@ def test_api_system_status_detects_terraform_errors(client):
         res = client.get('/api/system_status')
 
     data = res.get_json()
-    assert data['terraform']['status'] == 'Warnung'
-    assert '1 Provider mit Fehlern' in data['terraform']['details']
+    assert data['avd']['status'] == 'Warnung'
+    assert '1 Komponenten mit Fehlern' in data['avd']['details']
 
 
-def test_api_system_status_detects_terraform_outdated(client):
-    """System-Status erkennt Terraform-Provider Updates."""
+def test_api_system_status_detects_avd_manual(client):
+    """System-Status erkennt manuelle AVD-Komponenten."""
     mock_data = {
         'modules': [],
-        'providers': [
+        'avd_components': [
             {'status': 'current'},
-            {'status': 'outdated'},
+            {'status': 'manual'},
         ]
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
 
     data = res.get_json()
-    assert data['terraform']['status'] == 'Info'
-    assert '1 Updates' in data['terraform']['details']
+    assert data['avd']['status'] == 'Info'
+    assert '1 auto' in data['avd']['details']
+    assert '1 manuell' in data['avd']['details']
 
 
-def test_api_system_status_terraform_errors_prio_over_outdated(client):
-    """Terraform: Fehler haben Priorität über outdated."""
+def test_api_system_status_avd_errors_prio_over_manual(client):
+    """AVD: Fehler haben Priorität über manuell."""
     mock_data = {
         'modules': [],
-        'providers': [
+        'avd_components': [
             {'status': 'error'},
-            {'status': 'outdated'},
+            {'status': 'manual'},
         ]
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
 
     data = res.get_json()
-    assert data['terraform']['status'] == 'Warnung'
+    assert data['avd']['status'] == 'Warnung'
 
 
 def test_api_system_status_all_ok(client):
     """System-Status ist OK wenn alles aktuell."""
     mock_data = {
         'modules': [{'status': 'current', 'deprecated': False}],
-        'providers': [{'status': 'current'}]
+        'avd_components': [{'status': 'current'}]
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
 
     data = res.get_json()
     assert data['puppet']['status'] == 'OK'
-    assert data['terraform']['status'] == 'OK'
+    assert data['avd']['status'] == 'OK'
 
 
 def test_api_system_status_error_handling(client):
@@ -930,7 +958,7 @@ def test_api_system_status_error_handling(client):
 
     data = res.get_json()
     assert data['puppet']['status'] == 'Error'
-    assert data['terraform']['status'] == 'Error'
+    assert data['avd']['status'] == 'Error'
 
 
 def test_api_versions_returns_json(client):
@@ -939,7 +967,7 @@ def test_api_versions_returns_json(client):
     assert res.status_code == 200
     data = res.get_json()
     assert 'puppet_modules' in data
-    assert 'terraform_providers' in data
+    assert 'avd_components' in data
 
 
 def test_api_versions_contains_modules(client):
@@ -949,11 +977,11 @@ def test_api_versions_contains_modules(client):
     assert len(data['puppet_modules']) > 0
 
 
-def test_api_versions_contains_providers(client):
-    """GET /api/versions enthält Terraform-Provider."""
+def test_api_versions_contains_avd_components(client):
+    """GET /api/versions enthält AVD-Komponenten."""
     res = client.get('/api/versions')
     data = res.get_json()
-    assert len(data['terraform_providers']) > 0
+    assert len(data['avd_components']) > 0
 
 
 def test_api_modules_error_returns_500(client):
@@ -964,10 +992,10 @@ def test_api_modules_error_returns_500(client):
     assert 'error' in res.get_json()
 
 
-def test_api_terraform_error_returns_500(client):
-    """API gibt 500 zurück bei internem Terraform-Fehler."""
-    with patch.object(server, 'fetch_terraform_data', side_effect=Exception('test')):
-        res = client.get('/api/terraform-providers')
+def test_api_avd_error_returns_500(client):
+    """API gibt 500 zurück bei internem AVD-Fehler."""
+    with patch.object(server, 'fetch_avd_data', side_effect=Exception('test')):
+        res = client.get('/api/avd-components')
     assert res.status_code == 500
     assert 'error' in res.get_json()
 
@@ -980,10 +1008,10 @@ def test_api_modules_error_message(client):
     assert 'Serverfehler' in data['error']
 
 
-def test_api_terraform_error_message(client):
+def test_api_avd_error_message(client):
     """Fehler-Response enthält deutsche Fehlermeldung."""
-    with patch.object(server, 'fetch_terraform_data', side_effect=Exception('test')):
-        res = client.get('/api/terraform-providers')
+    with patch.object(server, 'fetch_avd_data', side_effect=Exception('test')):
+        res = client.get('/api/avd-components')
     data = res.get_json()
     assert 'Serverfehler' in data['error']
 
@@ -995,10 +1023,10 @@ def test_api_modules_only_get_allowed(client):
     assert res.status_code == 405
 
 
-def test_api_terraform_only_get_allowed(client):
-    """POST auf /api/terraform-providers gibt 405 zurück."""
-    with patch.object(server, 'fetch_terraform_data', return_value=[]):
-        res = client.post('/api/terraform-providers')
+def test_api_avd_only_get_allowed(client):
+    """POST auf /api/avd-components gibt 405 zurück."""
+    with patch.object(server, 'fetch_avd_data', return_value=[]):
+        res = client.post('/api/avd-components')
     assert res.status_code == 405
 
 
@@ -1027,11 +1055,11 @@ def test_serve_puppet_page(client):
     assert b'Puppet Module' in res.data
 
 
-def test_serve_terraform_page(client):
-    """GET /terraform.html liefert die Terraform-Seite."""
-    res = client.get('/terraform.html')
+def test_serve_avd_page(client):
+    """GET /avd.html liefert die AVD-Seite."""
+    res = client.get('/avd.html')
     assert res.status_code == 200
-    assert b'Terraform Provider' in res.data
+    assert b'AVD Komponenten' in res.data
 
 
 def test_serve_unknown_path_returns_404(client):
@@ -1090,9 +1118,9 @@ def test_serve_js_puppet(client):
     assert res.status_code == 200
 
 
-def test_serve_js_terraform(client):
-    """GET /scripts/terraform.js gibt JavaScript zurück."""
-    res = client.get('/scripts/terraform.js')
+def test_serve_js_avd(client):
+    """GET /scripts/avd.js gibt JavaScript zurück."""
+    res = client.get('/scripts/avd.js')
     assert res.status_code == 200
 
 
@@ -1201,7 +1229,6 @@ def test_index_has_dns_prefetch(client):
     res = client.get('/')
     assert b'dns-prefetch' in res.data
     assert b'forgeapi.puppet.com' in res.data
-    assert b'registry.terraform.io' in res.data
 
 
 def test_index_has_page_prefetch(client):
@@ -1209,7 +1236,7 @@ def test_index_has_page_prefetch(client):
     res = client.get('/')
     assert b'prefetch' in res.data
     assert b'puppet.html' in res.data
-    assert b'terraform.html' in res.data
+    assert b'avd.html' in res.data
 
 
 def test_puppet_page_has_dns_prefetch(client):
@@ -1217,13 +1244,6 @@ def test_puppet_page_has_dns_prefetch(client):
     res = client.get('/puppet.html')
     assert b'dns-prefetch' in res.data
     assert b'forgeapi.puppet.com' in res.data
-
-
-def test_terraform_page_has_dns_prefetch(client):
-    """Terraform-Seite enthält DNS-Prefetch für Registry API."""
-    res = client.get('/terraform.html')
-    assert b'dns-prefetch' in res.data
-    assert b'registry.terraform.io' in res.data
 
 
 # ============================================================================
@@ -1241,14 +1261,14 @@ def test_index_has_dashboard_stats(client):
     """Index enthält Dashboard-Stats."""
     res = client.get('/')
     assert b'puppetStatus' in res.data
-    assert b'terraformStatus' in res.data
+    assert b'avdStatus' in res.data
 
 
 def test_index_has_card_links(client):
-    """Index enthält Links zu Puppet und Terraform."""
+    """Index enthält Links zu Puppet und AVD."""
     res = client.get('/')
     assert b'puppet.html' in res.data
-    assert b'terraform.html' in res.data
+    assert b'avd.html' in res.data
 
 
 def test_puppet_has_filter(client):
@@ -1269,49 +1289,49 @@ def test_puppet_has_sortable_headers(client):
     assert b'sortable' in res.data
 
 
-def test_terraform_has_filter(client):
-    """Terraform-Seite hat Filter-Input."""
-    res = client.get('/terraform.html')
+def test_avd_has_filter(client):
+    """AVD-Seite hat Filter-Input."""
+    res = client.get('/avd.html')
     assert b'filter' in res.data
 
 
-def test_terraform_has_sortable_headers(client):
-    """Terraform-Seite hat sortierbare Tabellen-Header."""
-    res = client.get('/terraform.html')
+def test_avd_has_sortable_headers(client):
+    """AVD-Seite hat sortierbare Tabellen-Header."""
+    res = client.get('/avd.html')
     assert b'sortable' in res.data
 
 
 def test_all_pages_have_theme_toggle(client):
     """Alle Seiten haben Theme-Toggle Button."""
-    for path in ['/', '/puppet.html', '/terraform.html']:
+    for path in ['/', '/puppet.html', '/avd.html']:
         res = client.get(path)
         assert b'themeToggle' in res.data, f"{path} hat keinen Theme-Toggle"
 
 
 def test_all_pages_have_viewport_meta(client):
     """Alle Seiten haben Viewport-Meta-Tag."""
-    for path in ['/', '/puppet.html', '/terraform.html']:
+    for path in ['/', '/puppet.html', '/avd.html']:
         res = client.get(path)
         assert b'viewport' in res.data, f"{path} hat kein Viewport-Meta"
 
 
 def test_all_pages_load_shared_js(client):
     """Alle Seiten laden shared.js."""
-    for path in ['/', '/puppet.html', '/terraform.html']:
+    for path in ['/', '/puppet.html', '/avd.html']:
         res = client.get(path)
         assert b'shared.js' in res.data, f"{path} lädt nicht shared.js"
 
 
 def test_all_pages_load_shared_css(client):
     """Alle Seiten laden shared.css."""
-    for path in ['/', '/puppet.html', '/terraform.html']:
+    for path in ['/', '/puppet.html', '/avd.html']:
         res = client.get(path)
         assert b'shared.css' in res.data, f"{path} lädt nicht shared.css"
 
 
 def test_all_pages_load_theme_init(client):
     """Alle Seiten laden theme-init.js."""
-    for path in ['/', '/puppet.html', '/terraform.html']:
+    for path in ['/', '/puppet.html', '/avd.html']:
         res = client.get(path)
         assert b'theme-init.js' in res.data, f"{path} lädt nicht theme-init.js"
 
@@ -1360,7 +1380,7 @@ def test_index_js_prefetches_api_endpoints(client):
     """index.js prefetcht die API-Endpoints."""
     res = client.get('/scripts/index.js')
     assert b'/api/modules' in res.data
-    assert b'/api/terraform-providers' in res.data
+    assert b'/api/avd-components' in res.data
 
 
 def test_puppet_js_uses_debounced_filter(client):
@@ -1369,9 +1389,9 @@ def test_puppet_js_uses_debounced_filter(client):
     assert b'debouncedFilter' in res.data
 
 
-def test_terraform_js_uses_debounced_filter(client):
-    """terraform.js verwendet debouncedFilter."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_uses_debounced_filter(client):
+    """avd.js verwendet debouncedFilter."""
+    res = client.get('/scripts/avd.js')
     assert b'debouncedFilter' in res.data
 
 
@@ -1381,9 +1401,9 @@ def test_puppet_js_uses_document_fragment(client):
     assert b'createDocumentFragment' in res.data
 
 
-def test_terraform_js_uses_document_fragment(client):
-    """terraform.js verwendet DocumentFragment."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_uses_document_fragment(client):
+    """avd.js verwendet DocumentFragment."""
+    res = client.get('/scripts/avd.js')
     assert b'createDocumentFragment' in res.data
 
 
@@ -1393,9 +1413,9 @@ def test_puppet_js_uses_fetch_swr_not_raw_fetch(client):
     assert b'fetchSWR' in res.data
 
 
-def test_terraform_js_uses_fetch_swr_not_raw_fetch(client):
-    """terraform.js nutzt fetchSWR statt direktem fetch."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_uses_fetch_swr_not_raw_fetch(client):
+    """avd.js nutzt fetchSWR statt direktem fetch."""
+    res = client.get('/scripts/avd.js')
     assert b'fetchSWR' in res.data
 
 
@@ -1443,7 +1463,7 @@ def test_known_pages_set():
     assert '' in server._KNOWN_PAGES
     assert 'index.html' in server._KNOWN_PAGES
     assert 'puppet.html' in server._KNOWN_PAGES
-    assert 'terraform.html' in server._KNOWN_PAGES
+    assert 'avd.html' in server._KNOWN_PAGES
 
 
 def test_known_pages_count():
@@ -1498,9 +1518,9 @@ def test_puppet_js_uses_fetch_swr(client):
     assert b'fetchSWR' in res.data
 
 
-def test_terraform_js_uses_fetch_swr(client):
-    """terraform.js verwendet fetchSWR."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_uses_fetch_swr(client):
+    """avd.js verwendet fetchSWR."""
+    res = client.get('/scripts/avd.js')
     assert b'fetchSWR' in res.data
 
 
@@ -1510,9 +1530,9 @@ def test_puppet_js_refresh_clears_cache(client):
     assert b'removeItem' in res.data
 
 
-def test_terraform_js_refresh_clears_cache(client):
-    """terraform.js löscht Cache bei manuellem Refresh."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_refresh_clears_cache(client):
+    """avd.js löscht Cache bei manuellem Refresh."""
+    res = client.get('/scripts/avd.js')
     assert b'removeItem' in res.data
 
 
@@ -1578,9 +1598,9 @@ def test_puppet_js_uses_skeleton(client):
     assert b'createSkeletonRows' in res.data
 
 
-def test_terraform_js_uses_skeleton(client):
-    """terraform.js nutzt createSkeletonRows für Loading-State."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_uses_skeleton(client):
+    """avd.js nutzt createSkeletonRows für Loading-State."""
+    res = client.get('/scripts/avd.js')
     assert b'createSkeletonRows' in res.data
 
 
@@ -1596,7 +1616,7 @@ def test_puppet_js_shows_stale_indicator(client):
     assert b'stale-indicator' in res.data
 
 
-def test_terraform_js_shows_stale_indicator(client):
-    """terraform.js zeigt Stale-Indikator bei gecachten Daten."""
-    res = client.get('/scripts/terraform.js')
+def test_avd_js_shows_stale_indicator(client):
+    """avd.js zeigt Stale-Indikator bei gecachten Daten."""
+    res = client.get('/scripts/avd.js')
     assert b'stale-indicator' in res.data

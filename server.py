@@ -92,10 +92,10 @@ def load_versions():
             return _versions_cache
     except FileNotFoundError:
         logger.warning("versions.json not found, using empty defaults")
-        return {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
+        return {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
     except json.JSONDecodeError as e:
         logger.error("Error parsing versions.json: %s", e)
-        return {"puppet_modules": {}, "terraform_providers": {}, "github_releases": {}}
+        return {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
 
 # ============================================================================
 # CONNECTION POOLING (autoresearch-inspired: reuse connections, reduce overhead)
@@ -228,73 +228,84 @@ def _fetch_single_github_release(repo_name, tracked_version):
     return release_data
 
 
-def _fetch_single_provider(provider_name, installed_version):
-    """Holt Daten für einen einzelnen Terraform-Provider von der Registry."""
-    parts = provider_name.split('/')
-    if len(parts) != 2:
-        return {
-            'name': provider_name,
-            'displayName': provider_name,
-            'namespace': '',
-            'installedVersion': installed_version,
-            'latestVersion': 'N/A',
-            'status': 'error',
-            'error': f'Ungültiger Provider-Name: {provider_name}',
-            'url': ''
-        }
-    namespace, name = parts
-
-    provider_data = {
-        'name': provider_name,
-        'displayName': name,
-        'namespace': namespace,
-        'installedVersion': installed_version,
+def _fetch_single_avd_component(component):
+    """Holt die neueste Version einer AVD-Komponente basierend auf check_type."""
+    result = {
+        'name': component['name'],
+        'location': component.get('location', ''),
+        'tracked': component.get('tracked', ''),
         'latestVersion': 'N/A',
         'status': 'unknown',
-        'url': f'https://registry.terraform.io/providers/{provider_name}'
+        'link': component.get('link', ''),
+        'note': component.get('note', ''),
+        'checkType': component.get('check_type', 'manual'),
     }
 
+    check_type = component.get('check_type', 'manual')
+
+    if check_type == 'manual':
+        result['latestVersion'] = '-'
+        result['status'] = 'manual'
+        return result
+
     session = _get_http_session()
+
     try:
-        url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
-        response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
+        if check_type == 'github_release':
+            repo = component.get('check_source', '')
+            headers = {'Accept': 'application/vnd.github+json'}
+            gh_token = os.environ.get('GITHUB_TOKEN')
+            if gh_token:
+                headers['Authorization'] = f'token {gh_token}'
 
-        if response.status_code == 200:
-            data = response.json()
+            url = f'https://api.github.com/repos/{repo}/releases/latest'
+            response = session.get(url, timeout=10, headers=headers)
 
-            if 'version' in data:
-                latest_version = data['version']
-                provider_data['latestVersion'] = latest_version
+            if response.status_code == 200:
+                data = response.json()
+                tag = data.get('tag_name', '')
+                if tag:
+                    result['latestVersion'] = tag.lstrip('v')
+                    result['status'] = 'current'
+            else:
+                logger.warning("GitHub API status %d for %s", response.status_code, repo)
+                result['status'] = 'error'
+                result['error'] = f"HTTP {response.status_code}"
 
-                installed_clean = installed_version.lstrip('v')
-                latest_clean = latest_version.lstrip('v')
+        elif check_type == 'terraform_registry':
+            provider = component.get('check_source', '')
+            parts = provider.split('/')
+            if len(parts) != 2:
+                result['status'] = 'error'
+                result['error'] = f'Ungültiger Provider-Name: {provider}'
+                return result
+            namespace, name = parts
 
-                provider_data['status'] = 'current' if installed_clean == latest_clean else 'outdated'
+            url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
+            response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
 
-            if 'description' in data:
-                provider_data['description'] = data['description']
-            if 'source' in data:
-                provider_data['source'] = data['source']
-            if 'published_at' in data:
-                provider_data['publishedAt'] = data['published_at']
-
-        else:
-            logger.warning("Registry API status %d for %s", response.status_code, provider_name)
-            provider_data['status'] = 'error'
-            provider_data['error'] = f"HTTP {response.status_code}"
+            if response.status_code == 200:
+                data = response.json()
+                if 'version' in data:
+                    result['latestVersion'] = data['version'].lstrip('v')
+                    result['status'] = 'current'
+            else:
+                logger.warning("Registry API status %d for %s", response.status_code, provider)
+                result['status'] = 'error'
+                result['error'] = f"HTTP {response.status_code}"
 
     except requests.Timeout:
-        provider_data['status'] = 'error'
-        provider_data['error'] = 'Timeout'
+        result['status'] = 'error'
+        result['error'] = 'Timeout'
     except requests.RequestException:
-        provider_data['status'] = 'error'
-        provider_data['error'] = 'Verbindungsfehler'
+        result['status'] = 'error'
+        result['error'] = 'Verbindungsfehler'
     except Exception:
-        logger.exception("Unexpected error for provider %s", provider_name)
-        provider_data['status'] = 'error'
-        provider_data['error'] = 'Unerwarteter Fehler'
+        logger.exception("Unexpected error for AVD component %s", component['name'])
+        result['status'] = 'error'
+        result['error'] = 'Unerwarteter Fehler'
 
-    return provider_data
+    return result
 
 # ============================================================================
 # DATA FETCHING LOGIC (cached, parallel, optimized worker count)
@@ -326,16 +337,16 @@ def fetch_modules_data():
         return results
 
 
-@cache.cached(timeout=300, key_prefix='terraform_providers_data')
-def fetch_terraform_data():
-    """Holt alle Terraform Provider Daten parallel von der Registry (mit Cache)."""
+@cache.cached(timeout=300, key_prefix='avd_components_data')
+def fetch_avd_data():
+    """Holt alle AVD-Komponenten Daten parallel (mit Cache)."""
     versions = load_versions()
-    installed_providers = versions.get('terraform_providers', {})
+    avd_components = versions.get('avd_components', [])
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
         futures = {
-            executor.submit(_fetch_single_provider, name, version): name
-            for name, version in installed_providers.items()
+            executor.submit(_fetch_single_avd_component, comp): comp['name']
+            for comp in avd_components
         }
         results = []
         for future in as_completed(futures):
@@ -348,19 +359,19 @@ def fetch_terraform_data():
 
 @cache.cached(timeout=300, key_prefix='all_data')
 def fetch_all_data():
-    """Holt Module UND Provider parallel in einem einzigen Aufruf.
+    """Holt Module UND AVD-Komponenten parallel in einem einzigen Aufruf.
 
     autoresearch-Pattern: Überlappung von I/O-Operationen.
-    Statt sequentiell modules, dann providers zu laden, werden beide
+    Statt sequentiell modules, dann AVD-Komponenten zu laden, werden beide
     gleichzeitig gestartet.
     """
     versions = load_versions()
     installed_modules = versions.get('puppet_modules', {})
-    installed_providers = versions.get('terraform_providers', {})
+    avd_components = versions.get('avd_components', [])
     github_releases = versions.get('github_releases', {})
 
     modules = []
-    providers = []
+    avd_results = []
 
     with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
         module_futures = {
@@ -371,21 +382,21 @@ def fetch_all_data():
             executor.submit(_fetch_single_github_release, name, version): ('module', name)
             for name, version in github_releases.items()
         }
-        provider_futures = {
-            executor.submit(_fetch_single_provider, name, version): ('provider', name)
-            for name, version in installed_providers.items()
+        avd_futures = {
+            executor.submit(_fetch_single_avd_component, comp): ('avd', comp['name'])
+            for comp in avd_components
         }
 
-        all_futures = {**module_futures, **gh_futures, **provider_futures}
+        all_futures = {**module_futures, **gh_futures, **avd_futures}
         for future in as_completed(all_futures):
             kind, _name = all_futures[future]
             result = future.result()
             if kind == 'module':
                 modules.append(result)
             else:
-                providers.append(result)
+                avd_results.append(result)
 
-    return {'modules': modules, 'providers': providers}
+    return {'modules': modules, 'avd_components': avd_results}
 
 # ============================================================================
 # STATIC FILES ROUTES
@@ -430,19 +441,19 @@ def get_modules():
         return jsonify({'error': 'Serverfehler beim Laden der Module'}), 500
 
 # ============================================================================
-# API ROUTES - TERRAFORM PROVIDERS
+# API ROUTES - AVD COMPONENTS
 # ============================================================================
 
-@app.route('/api/terraform-providers', methods=['GET'])
+@app.route('/api/avd-components', methods=['GET'])
 @limiter.limit("30 per minute")
-def get_terraform_providers():
-    """Ruft Terraform Provider Informationen von der Terraform Registry ab."""
+def get_avd_components():
+    """Ruft AVD-Komponenten Versionsinformationen ab."""
     try:
-        result = fetch_terraform_data()
+        result = fetch_avd_data()
         return jsonify(result)
     except Exception:
-        logger.exception("Critical error in get_terraform_providers")
-        return jsonify({'error': 'Serverfehler beim Laden der Provider'}), 500
+        logger.exception("Critical error in get_avd_components")
+        return jsonify({'error': 'Serverfehler beim Laden der AVD-Komponenten'}), 500
 
 # ============================================================================
 # API ROUTES - SYSTEM STATUS (optimized: parallel fetch)
@@ -459,12 +470,12 @@ def get_system_status():
 
     # Puppet Module Status
     puppet_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
-    terraform_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    avd_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
 
     try:
         all_data = fetch_all_data()
         modules = all_data['modules']
-        providers = all_data['providers']
+        avd_components = all_data['avd_components']
 
         # Puppet-Analyse
         outdated_count = 0
@@ -482,30 +493,33 @@ def get_system_status():
         else:
             puppet_status = {"status": "OK", "details": "Alle Module aktuell"}
 
-        # Terraform-Analyse
-        tf_outdated = 0
-        tf_errors = 0
-        for provider in providers:
-            if provider.get('status') == 'outdated':
-                tf_outdated += 1
-            elif provider.get('status') == 'error':
-                tf_errors += 1
+        # AVD-Analyse
+        avd_errors = 0
+        avd_manual = 0
+        avd_ok = 0
+        for comp in avd_components:
+            if comp.get('status') == 'error':
+                avd_errors += 1
+            elif comp.get('status') == 'manual':
+                avd_manual += 1
+            else:
+                avd_ok += 1
 
-        if tf_errors > 0:
-            terraform_status = {"status": "Warnung", "details": f"{tf_errors} Provider mit Fehlern"}
-        elif tf_outdated > 0:
-            terraform_status = {"status": "Info", "details": f"{tf_outdated} Updates verfügbar"}
+        if avd_errors > 0:
+            avd_status = {"status": "Warnung", "details": f"{avd_errors} Komponenten mit Fehlern"}
+        elif avd_manual > 0:
+            avd_status = {"status": "Info", "details": f"{avd_ok} auto-geprüft, {avd_manual} manuell"}
         else:
-            terraform_status = {"status": "OK", "details": "Alle Provider aktuell"}
+            avd_status = {"status": "OK", "details": "Alle Komponenten geprüft"}
 
     except Exception:
         logger.exception("Error fetching system status")
         puppet_status = {"status": "Error", "details": "Fehler beim Laden"}
-        terraform_status = {"status": "Error", "details": "Fehler beim Laden"}
+        avd_status = {"status": "Error", "details": "Fehler beim Laden"}
 
     return jsonify({
         "puppet": puppet_status,
-        "terraform": terraform_status,
+        "avd": avd_status,
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     })
 
@@ -525,7 +539,7 @@ def get_versions():
 # ============================================================================
 
 # Bekannte statische Seiten
-_KNOWN_PAGES = {'', 'index.html', 'puppet.html', 'terraform.html'}
+_KNOWN_PAGES = {'', 'index.html', 'puppet.html', 'avd.html'}
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
