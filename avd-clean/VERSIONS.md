@@ -21,13 +21,13 @@ Stand: 2026-03-27
 
 | Name | Ort | Tracked | Neueste Release | Status | Link |
 |------|-----|---------|-----------------|--------|------|
-| **DSC Extension (AVD Agent)** | `modules/session-host/main.tf:164` | `2.77` | 2.77 | OK (Retirement 2028-03-31) | [Docs](https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-windows) |
-| **AVD Agent DSC Config ZIP** | `modules/session-host/variables.tf:147` | `1.0.02797.442` | 1.0.02797.442 | Pruefen via Portal | [Agent Releases](https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent) |
+| **DSC Extension (AVD Agent)** | `modules/session-host/main.tf:164` | `2.77` | 2.83 | OK (auto-upgrade, Retirement 2028-03-31) | [Docs](https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-windows) |
+| **AVD Agent DSC Config ZIP** | `modules/session-host/variables.tf:147` | `1.0.02797.442` | Agent 1.0.13514.600 | ZIP via Portal pruefen | [Agent Releases](https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent) |
 | **JsonADDomainExtension** | `modules/session-host/main.tf:131` | `1.3` | 1.3 | OK | [Docs](https://learn.microsoft.com/en-us/entra/identity/domain-services/join-windows-vm-template) |
-| **FSLogix** | Im Packer Image (nicht in Terraform) | Im Image | 2210hotfix4 (2.9.8884.27471) | Image pruefen | [Release Notes](https://learn.microsoft.com/en-us/fslogix/overview-release-notes) |
+| **FSLogix** | Im Packer Image (nicht in Terraform) | Im Image | 26.01 CU1 (3.26.126.19110) | Image pruefen | [Release Notes](https://learn.microsoft.com/en-us/fslogix/overview-release-notes) |
 
 ## Azure Allgemein
 
 | Name | Ort | Tracked | Neueste Release | Status | Link |
 |------|-----|---------|-----------------|--------|------|
-| **AVD REST API** | `scripts/*.ps1`, `pipelines/*.yml` | `2024-04-03` | 2024-04-03 (GA), 2024-08-08-preview | OK | [API Docs](https://learn.microsoft.com/en-us/rest/api/desktopvirtualization/) |
+| **AVD REST API** | `scripts/*.ps1`, `pipelines/*.yml` | `2024-04-03` | GA 2024-04-03, Preview 2026-01-01 | OK | [API Docs](https://learn.microsoft.com/en-us/rest/api/desktopvirtualization/) |

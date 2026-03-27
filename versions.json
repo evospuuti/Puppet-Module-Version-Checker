@@ -70,22 +70,22 @@
       "category": "Session Host",
       "location": "modules/session-host/main.tf:164",
       "tracked": "2.77",
-      "known_latest": "2.77",
+      "known_latest": "2.83",
       "check_type": "manual",
       "check_source": null,
       "link": "https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-windows",
-      "note": "Retirement 2028-03-31"
+      "note": "Retirement 2028-03-31, auto-upgrade von 2.77 auf 2.83"
     },
     {
       "name": "AVD Agent DSC Config ZIP",
       "category": "Session Host",
       "location": "modules/session-host/variables.tf:147",
       "tracked": "1.0.02797.442",
-      "known_latest": "1.0.02797.442",
+      "known_latest": "Agent 1.0.13514.600",
       "check_type": "manual",
       "check_source": null,
       "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent",
-      "note": "Pruefen via Portal"
+      "note": "ZIP via Portal pruefen, Agent Production: 1.0.13514.600"
     },
     {
       "name": "JsonADDomainExtension",
@@ -102,7 +102,7 @@
       "category": "Session Host",
       "location": "Im Packer Image (nicht in Terraform)",
       "tracked": "Im Image",
-      "known_latest": "2210hotfix4 (2.9.8884.27471)",
+      "known_latest": "26.01 CU1 (3.26.126.19110)",
       "check_type": "manual",
       "check_source": null,
       "link": "https://learn.microsoft.com/en-us/fslogix/overview-release-notes",
@@ -113,11 +113,11 @@
       "category": "Azure Allgemein",
       "location": "scripts/*.ps1, pipelines/*.yml",
       "tracked": "2024-04-03",
-      "known_latest": "2024-04-03",
+      "known_latest": "GA 2024-04-03, Preview 2026-01-01",
       "check_type": "manual",
       "check_source": null,
       "link": "https://learn.microsoft.com/en-us/rest/api/desktopvirtualization/",
-      "note": "GA: 2024-04-03, Preview: 2024-08-08-preview"
+      "note": "GA: 2024-04-03, Preview: 2026-01-01-preview"
     }
   ],
   "_meta": {
