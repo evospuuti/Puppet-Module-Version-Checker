@@ -49,29 +49,8 @@
             </div>
         </div>
 
-        <div class="card">
-            <div class="flex justify-between items-center mb-2">
-                <input type="text" id="filter" class="filter-input" placeholder="Filter...">
-                <span class="text-muted" id="componentCount"></span>
-            </div>
-
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="sortable" data-sort="name" data-label="Name">Name</th>
-                            <th class="sortable" data-sort="location" data-label="Ort">Ort</th>
-                            <th class="sortable" data-sort="tracked" data-label="Tracked">Tracked</th>
-                            <th class="sortable" data-sort="latest" data-label="Neueste">Neueste</th>
-                            <th class="sortable" data-sort="status" data-label="Status">Status</th>
-                            <th>Link</th>
-                        </tr>
-                    </thead>
-                    <tbody id="componentTable">
-                        <tr><td colspan="6"><div class="loading"><div class="spinner"></div> Laden...</div></td></tr>
-                    </tbody>
-                </table>
-            </div>
+        <div id="categoryGroups">
+            <div class="loading"><div class="spinner"></div> Laden...</div>
         </div>
     </main>
 

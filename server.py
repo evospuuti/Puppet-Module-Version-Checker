@@ -232,6 +232,7 @@ def _fetch_single_avd_component(component):
     """Holt die neueste Version einer AVD-Komponente basierend auf check_type."""
     result = {
         'name': component['name'],
+        'category': component.get('category', ''),
         'location': component.get('location', ''),
         'tracked': component.get('tracked', ''),
         'latestVersion': 'N/A',
@@ -244,7 +245,7 @@ def _fetch_single_avd_component(component):
     check_type = component.get('check_type', 'manual')
 
     if check_type == 'manual':
-        result['latestVersion'] = '-'
+        result['latestVersion'] = component.get('known_latest', '-')
         result['status'] = 'manual'
         return result
 

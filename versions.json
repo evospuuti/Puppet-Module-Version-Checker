@@ -20,74 +20,16 @@
   "avd_components": [
     {
       "name": "Terraform",
-      "location": "spoke/providers.tf, session-hosts/providers.tf",
+      "category": "Runner",
+      "location": "Runner (vorinstalliert)",
       "tracked": ">= 1.14.0, < 2.0.0",
       "check_type": "github_release",
       "check_source": "hashicorp/terraform",
       "link": "https://github.com/hashicorp/terraform/releases"
     },
     {
-      "name": "AzureRM Provider",
-      "location": "spoke/providers.tf, session-hosts/providers.tf",
-      "tracked": "~> 4.0 (installed: 4.66.0)",
-      "check_type": "terraform_registry",
-      "check_source": "hashicorp/azurerm",
-      "link": "https://github.com/hashicorp/terraform-provider-azurerm/releases"
-    },
-    {
-      "name": "AzureAD Provider",
-      "location": "spoke/providers.tf",
-      "tracked": "~> 3.0",
-      "check_type": "terraform_registry",
-      "check_source": "hashicorp/azuread",
-      "link": "https://github.com/hashicorp/terraform-provider-azuread/releases"
-    },
-    {
-      "name": "DSC Extension (AVD Agent)",
-      "location": "modules/session-host/main.tf:164",
-      "tracked": "2.77",
-      "check_type": "manual",
-      "check_source": null,
-      "link": "https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-windows",
-      "note": "Retirement 2028-03-31"
-    },
-    {
-      "name": "AVD Agent DSC Config ZIP",
-      "location": "modules/session-host/variables.tf:147",
-      "tracked": "1.0.02797.442",
-      "check_type": "manual",
-      "check_source": null,
-      "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent",
-      "note": "Pruefen via Portal"
-    },
-    {
-      "name": "JsonADDomainExtension",
-      "location": "modules/session-host/main.tf:131",
-      "tracked": "1.3",
-      "check_type": "manual",
-      "check_source": null,
-      "link": "https://learn.microsoft.com/en-us/entra/identity/domain-services/join-windows-vm-template"
-    },
-    {
-      "name": "FSLogix",
-      "location": "Im Packer Image (nicht in Terraform)",
-      "tracked": "Im Image",
-      "check_type": "manual",
-      "check_source": null,
-      "link": "https://learn.microsoft.com/en-us/fslogix/overview-release-notes",
-      "note": "26.01 CU1 (3.26.126.19110) - Image pruefen"
-    },
-    {
-      "name": "AVD REST API",
-      "location": "scripts/*.ps1, pipelines/*.yml",
-      "tracked": "2024-04-03",
-      "check_type": "manual",
-      "check_source": null,
-      "link": "https://learn.microsoft.com/en-us/rest/api/desktopvirtualization/",
-      "note": "GA: 2024-04-03, Preview: 2026-01-01-preview"
-    },
-    {
       "name": "Azure CLI",
+      "category": "Runner",
       "location": "Runner (vorinstalliert)",
       "tracked": "Nicht getracked",
       "check_type": "github_release",
@@ -97,6 +39,7 @@
     },
     {
       "name": "PowerShell",
+      "category": "Runner",
       "location": "Runner (vorinstalliert)",
       "tracked": "7.x",
       "check_type": "github_release",
@@ -105,21 +48,76 @@
       "note": "Runner pruefen"
     },
     {
-      "name": "TLS Minimum",
-      "location": "modules/storage/main.tf:22",
-      "tracked": "TLS1_2",
-      "check_type": "manual",
-      "check_source": null,
-      "link": null
+      "name": "AzureRM Provider",
+      "category": "Spoke",
+      "location": "spoke/providers.tf, session-hosts/providers.tf",
+      "tracked": "~> 4.0 (installed: 4.66.0)",
+      "check_type": "terraform_registry",
+      "check_source": "hashicorp/azurerm",
+      "link": "https://github.com/hashicorp/terraform-provider-azurerm/releases"
     },
     {
-      "name": "Windows Image",
-      "location": "config/common.tfvars",
-      "tracked": "latest (aus Compute Gallery)",
+      "name": "AzureAD Provider",
+      "category": "Spoke",
+      "location": "spoke/providers.tf",
+      "tracked": "~> 3.0",
+      "check_type": "terraform_registry",
+      "check_source": "hashicorp/azuread",
+      "link": "https://github.com/hashicorp/terraform-provider-azuread/releases"
+    },
+    {
+      "name": "DSC Extension (AVD Agent)",
+      "category": "Session Host",
+      "location": "modules/session-host/main.tf:164",
+      "tracked": "2.77",
+      "known_latest": "2.83",
       "check_type": "manual",
       "check_source": null,
-      "link": null,
-      "note": "Packer Build - Image pruefen"
+      "link": "https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-windows",
+      "note": "Retirement 2028-03-31, auto-upgrade von 2.77 auf 2.83"
+    },
+    {
+      "name": "AVD Agent DSC Config ZIP",
+      "category": "Session Host",
+      "location": "modules/session-host/variables.tf:147",
+      "tracked": "1.0.02797.442",
+      "known_latest": "Agent 1.0.13514.600",
+      "check_type": "manual",
+      "check_source": null,
+      "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent",
+      "note": "ZIP via Portal pruefen, Agent Production: 1.0.13514.600"
+    },
+    {
+      "name": "JsonADDomainExtension",
+      "category": "Session Host",
+      "location": "modules/session-host/main.tf:131",
+      "tracked": "1.3",
+      "known_latest": "1.3",
+      "check_type": "manual",
+      "check_source": null,
+      "link": "https://learn.microsoft.com/en-us/entra/identity/domain-services/join-windows-vm-template"
+    },
+    {
+      "name": "FSLogix",
+      "category": "Session Host",
+      "location": "Im Packer Image (nicht in Terraform)",
+      "tracked": "Im Image",
+      "known_latest": "26.01 CU1 (3.26.126.19110)",
+      "check_type": "manual",
+      "check_source": null,
+      "link": "https://learn.microsoft.com/en-us/fslogix/overview-release-notes",
+      "note": "Image pruefen"
+    },
+    {
+      "name": "AVD REST API",
+      "category": "Azure Allgemein",
+      "location": "scripts/*.ps1, pipelines/*.yml",
+      "tracked": "2024-04-03",
+      "known_latest": "GA 2024-04-03, Preview 2026-01-01",
+      "check_type": "manual",
+      "check_source": null,
+      "link": "https://learn.microsoft.com/en-us/rest/api/desktopvirtualization/",
+      "note": "GA: 2024-04-03, Preview: 2026-01-01-preview"
     }
   ],
   "_meta": {

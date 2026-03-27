@@ -125,6 +125,12 @@ body {
     margin-bottom: 1rem;
 }
 
+.category-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
 .card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
