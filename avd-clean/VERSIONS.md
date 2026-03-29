@@ -6,9 +6,12 @@ Stand: 2026-03-27
 
 | Name | Ort | Tracked | Neueste Release | Status | Link |
 |------|-----|---------|-----------------|--------|------|
-| **Terraform** | Runner (vorinstalliert) | `>= 1.14.0, < 2.0.0` | *auto* | Auto | [Releases](https://github.com/hashicorp/terraform/releases) |
-| **Azure CLI** | Runner (vorinstalliert) | Nicht getracked | *auto* | Runner pruefen | [Releases](https://github.com/Azure/azure-cli/releases) |
-| **PowerShell** | Runner (vorinstalliert) | 7.6 | *auto* | Runner pruefen | [Releases](https://github.com/PowerShell/PowerShell/releases) |
+| **PowerShell 7** | Runner (vorinstalliert) | `7.6.0` | *auto* | OK | [Releases](https://github.com/PowerShell/PowerShell/releases) |
+| **Azure CLI** | Runner (vorinstalliert) | `2.84.0` | *auto* | OK | [Releases](https://github.com/Azure/azure-cli/releases) |
+| **Git** | Runner (vorinstalliert) | `2.53.0` | *auto* | OK | [Releases](https://github.com/git/git/releases) |
+| **AD-Modul** | Runner (vorinstalliert) | `1.0.1.0` | 1.0.1.0 | OK | [PowerShell Gallery](https://www.powershellgallery.com/packages/ActiveDirectory) |
+| **Terraform** | Runner (vorinstalliert) | `1.14.8` | *auto* | OK | [Releases](https://github.com/hashicorp/terraform/releases) |
+| **Packer** | Runner (vorinstalliert) | `1.15.1` | *auto* | OK (Bonus) | [Releases](https://github.com/hashicorp/packer/releases) |
 
 ## Spoke
 

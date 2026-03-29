@@ -19,33 +19,61 @@
   },
   "avd_components": [
     {
-      "name": "Terraform",
+      "name": "PowerShell 7",
       "category": "Runner",
       "location": "Runner (vorinstalliert)",
-      "tracked": ">= 1.14.0, < 2.0.0",
+      "tracked": "7.6.0",
       "check_type": "github_release",
-      "check_source": "hashicorp/terraform",
-      "link": "https://github.com/hashicorp/terraform/releases"
+      "check_source": "PowerShell/PowerShell",
+      "link": "https://github.com/PowerShell/PowerShell/releases"
     },
     {
       "name": "Azure CLI",
       "category": "Runner",
       "location": "Runner (vorinstalliert)",
-      "tracked": "Nicht getracked",
+      "tracked": "2.84.0",
       "check_type": "github_release",
       "check_source": "Azure/azure-cli",
-      "link": "https://github.com/Azure/azure-cli/releases",
-      "note": "Runner pruefen"
+      "link": "https://github.com/Azure/azure-cli/releases"
     },
     {
-      "name": "PowerShell",
+      "name": "Git",
       "category": "Runner",
       "location": "Runner (vorinstalliert)",
-      "tracked": "7.6",
+      "tracked": "2.53.0",
       "check_type": "github_release",
-      "check_source": "PowerShell/PowerShell",
-      "link": "https://github.com/PowerShell/PowerShell/releases",
-      "note": "Runner pruefen"
+      "check_source": "git/git",
+      "link": "https://github.com/git/git/releases"
+    },
+    {
+      "name": "AD-Modul",
+      "category": "Runner",
+      "location": "Runner (vorinstalliert)",
+      "tracked": "1.0.1.0",
+      "known_latest": "1.0.1.0",
+      "check_type": "manual",
+      "check_source": null,
+      "link": "https://www.powershellgallery.com/packages/ActiveDirectory",
+      "note": "PowerShell Gallery pruefen"
+    },
+    {
+      "name": "Terraform",
+      "category": "Runner",
+      "location": "Runner (vorinstalliert)",
+      "tracked": "1.14.8",
+      "check_type": "github_release",
+      "check_source": "hashicorp/terraform",
+      "link": "https://github.com/hashicorp/terraform/releases"
+    },
+    {
+      "name": "Packer",
+      "category": "Runner",
+      "location": "Runner (vorinstalliert)",
+      "tracked": "1.15.1",
+      "check_type": "github_release",
+      "check_source": "hashicorp/packer",
+      "link": "https://github.com/hashicorp/packer/releases",
+      "note": "Bonus"
     },
     {
       "name": "AzureRM Provider",

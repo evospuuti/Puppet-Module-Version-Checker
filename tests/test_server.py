@@ -427,9 +427,9 @@ def test_fetch_avd_component_github_release_current():
 def test_fetch_avd_component_github_release_strips_v():
     """GitHub-Release: v-Prefix wird entfernt."""
     comp = {
-        'name': 'PowerShell',
+        'name': 'PowerShell 7',
         'location': 'Runner',
-        'tracked': '7.6',
+        'tracked': '7.6.0',
         'check_type': 'github_release',
         'check_source': 'PowerShell/PowerShell',
         'link': 'https://github.com/PowerShell/PowerShell/releases'
