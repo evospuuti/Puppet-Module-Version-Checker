@@ -429,7 +429,7 @@ def test_fetch_avd_component_github_release_strips_v():
     comp = {
         'name': 'PowerShell',
         'location': 'Runner',
-        'tracked': '7.x',
+        'tracked': '7.6',
         'check_type': 'github_release',
         'check_source': 'PowerShell/PowerShell',
         'link': 'https://github.com/PowerShell/PowerShell/releases'

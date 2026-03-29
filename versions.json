@@ -41,7 +41,7 @@
       "name": "PowerShell",
       "category": "Runner",
       "location": "Runner (vorinstalliert)",
-      "tracked": "7.x",
+      "tracked": "7.6",
       "check_type": "github_release",
       "check_source": "PowerShell/PowerShell",
       "link": "https://github.com/PowerShell/PowerShell/releases",

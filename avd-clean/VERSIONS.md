@@ -8,7 +8,7 @@ Stand: 2026-03-27
 |------|-----|---------|-----------------|--------|------|
 | **Terraform** | Runner (vorinstalliert) | `>= 1.14.0, < 2.0.0` | *auto* | Auto | [Releases](https://github.com/hashicorp/terraform/releases) |
 | **Azure CLI** | Runner (vorinstalliert) | Nicht getracked | *auto* | Runner pruefen | [Releases](https://github.com/Azure/azure-cli/releases) |
-| **PowerShell** | Runner (vorinstalliert) | 7.x | *auto* | Runner pruefen | [Releases](https://github.com/PowerShell/PowerShell/releases) |
+| **PowerShell** | Runner (vorinstalliert) | 7.6 | *auto* | Runner pruefen | [Releases](https://github.com/PowerShell/PowerShell/releases) |
 
 ## Spoke
 
