@@ -144,7 +144,7 @@ def _fetch_single_module(module_name, installed_version):
         'forgeVersion': 'N/A',
         'status': 'unknown',
         'deprecated': False,
-        'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/")}'
+        'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/", 1)}'
     }
 
     session = _get_http_session()
@@ -316,6 +316,12 @@ def _fetch_single_avd_component(component):
 # (analog zu multiprocessing.Pool für parallele Shard-Downloads)
 _MAX_WORKERS = 20
 
+# Geteilter Executor: Threads (und damit deren thread-lokale Sessions samt
+# Connection Pools) überleben einzelne Requests. Ein per-Request erzeugter
+# ThreadPoolExecutor würde bei jedem Aufruf neue Threads starten und das
+# Connection Pooling wirkungslos machen.
+_executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS)
+
 @cache.cached(timeout=300, key_prefix='puppet_modules_data')
 def fetch_modules_data():
     """Holt alle Puppet Module + GitHub Release Daten parallel (mit Cache)."""
@@ -323,19 +329,15 @@ def fetch_modules_data():
     installed_modules = versions.get('puppet_modules', {})
     github_releases = versions.get('github_releases', {})
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(_fetch_single_module, name, version): name
-            for name, version in installed_modules.items()
-        }
-        futures.update({
-            executor.submit(_fetch_single_github_release, name, version): name
-            for name, version in github_releases.items()
-        })
-        results = []
-        for future in as_completed(futures):
-            results.append(future.result())
-        return results
+    futures = {
+        _executor.submit(_fetch_single_module, name, version): name
+        for name, version in installed_modules.items()
+    }
+    futures.update({
+        _executor.submit(_fetch_single_github_release, name, version): name
+        for name, version in github_releases.items()
+    })
+    return [future.result() for future in as_completed(futures)]
 
 
 @cache.cached(timeout=300, key_prefix='avd_components_data')
@@ -344,15 +346,11 @@ def fetch_avd_data():
     versions = load_versions()
     avd_components = versions.get('avd_components', [])
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(_fetch_single_avd_component, comp): comp['name']
-            for comp in avd_components
-        }
-        results = []
-        for future in as_completed(futures):
-            results.append(future.result())
-        return results
+    futures = {
+        _executor.submit(_fetch_single_avd_component, comp): comp['name']
+        for comp in avd_components
+    }
+    return [future.result() for future in as_completed(futures)]
 
 # ============================================================================
 # COMBINED DATA FETCH (autoresearch-Pattern: prefetch/overlap I/O)
@@ -374,28 +372,25 @@ def fetch_all_data():
     modules = []
     avd_results = []
 
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        module_futures = {
-            executor.submit(_fetch_single_module, name, version): ('module', name)
-            for name, version in installed_modules.items()
-        }
-        gh_futures = {
-            executor.submit(_fetch_single_github_release, name, version): ('module', name)
-            for name, version in github_releases.items()
-        }
-        avd_futures = {
-            executor.submit(_fetch_single_avd_component, comp): ('avd', comp['name'])
-            for comp in avd_components
-        }
+    all_futures = {
+        _executor.submit(_fetch_single_module, name, version): 'module'
+        for name, version in installed_modules.items()
+    }
+    all_futures.update({
+        _executor.submit(_fetch_single_github_release, name, version): 'module'
+        for name, version in github_releases.items()
+    })
+    all_futures.update({
+        _executor.submit(_fetch_single_avd_component, comp): 'avd'
+        for comp in avd_components
+    })
 
-        all_futures = {**module_futures, **gh_futures, **avd_futures}
-        for future in as_completed(all_futures):
-            kind, _name = all_futures[future]
-            result = future.result()
-            if kind == 'module':
-                modules.append(result)
-            else:
-                avd_results.append(result)
+    for future in as_completed(all_futures):
+        result = future.result()
+        if all_futures[future] == 'module':
+            modules.append(result)
+        else:
+            avd_results.append(result)
 
     return {'modules': modules, 'avd_components': avd_results}
 
@@ -404,16 +399,19 @@ def fetch_all_data():
 # ============================================================================
 
 @app.route('/styles/<path:filename>')
+@limiter.exempt
 def serve_styles(filename):
     """Serve CSS files."""
     return send_from_directory('public/styles', filename)
 
 @app.route('/scripts/<path:filename>')
+@limiter.exempt
 def serve_scripts(filename):
     """Serve JavaScript files."""
     return send_from_directory('public/scripts', filename)
 
 @app.route('/favicon.ico')
+@limiter.exempt
 def serve_favicon():
     """Serve favicon (SVG inline)."""
     svg = (
@@ -544,6 +542,7 @@ _KNOWN_PAGES = {'', 'index.html', 'puppet.html', 'avd.html'}
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
+@limiter.exempt
 def serve(path):
     """Serve static HTML files. Returns 404 for unknown paths."""
     if path in _KNOWN_PAGES:
