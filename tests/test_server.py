@@ -20,6 +20,15 @@ def reset_flask_cache():
     server.cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def disable_rate_limiter():
+    """In-Memory Rate-Limiter zählt über die Test-Suite hinweg und
+    würde nach 30/60 Requests 429 liefern - für Tests deaktivieren."""
+    server.limiter.enabled = False
+    yield
+    server.limiter.enabled = True
+
+
 @pytest.fixture
 def client():
     """Flask test client."""
