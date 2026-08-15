@@ -108,26 +108,32 @@ function renderCategories() {
     }
 }
 
+// 'current' wird als Alias für 'checked' akzeptiert, damit alte
+// localStorage-Caches nach dem Deploy nicht als Fehler angezeigt werden
+function isChecked(status) {
+    return status === 'checked' || status === 'current';
+}
+
 function updateStats() {
-    var current = 0, manual = 0, errors = 0;
+    var checked = 0, manual = 0, errors = 0;
     for (var i = 0; i < components.length; i++) {
-        if (components[i].status === 'current') current++;
+        if (isChecked(components[i].status)) checked++;
         else if (components[i].status === 'manual') manual++;
         else if (components[i].status === 'error') errors++;
     }
-    document.getElementById('currentCount').textContent = current;
+    document.getElementById('currentCount').textContent = checked;
     document.getElementById('manualCount').textContent = manual;
     document.getElementById('errorCount').textContent = errors;
 }
 
 function getBadgeClass(status) {
-    if (status === 'current') return 'badge-success';
+    if (isChecked(status)) return 'badge-success';
     if (status === 'manual') return 'badge-warning';
     return 'badge-danger';
 }
 
 function getStatusText(status) {
-    if (status === 'current') return 'OK';
+    if (isChecked(status)) return 'Geprüft';
     if (status === 'manual') return 'Manuell';
     return 'Fehler';
 }

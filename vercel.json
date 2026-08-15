@@ -19,14 +19,16 @@
       "src": "/styles/(.*)",
       "dest": "public/styles/$1",
       "headers": {
-        "Cache-Control": "public, max-age=86400, s-maxage=86400"
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
+        "X-Content-Type-Options": "nosniff"
       }
     },
     {
       "src": "/scripts/(.*)",
       "dest": "public/scripts/$1",
       "headers": {
-        "Cache-Control": "public, max-age=86400, s-maxage=86400"
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
+        "X-Content-Type-Options": "nosniff"
       }
     },
     {
@@ -35,11 +37,25 @@
     },
     {
       "src": "/(.*\\.(html|css|js|png|jpg|jpeg|gif|svg|ico))",
-      "dest": "public/$1"
+      "dest": "public/$1",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+      }
     },
     {
       "src": "/",
-      "dest": "public/index.html"
+      "dest": "public/index.html",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+      }
     }
   ]
 }

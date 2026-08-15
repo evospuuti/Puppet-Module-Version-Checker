@@ -81,11 +81,11 @@
       "category": "Session Host",
       "location": "modules/session-host/variables.tf:147",
       "tracked": "1.0.02797.442",
-      "known_latest": "Agent 1.0.13514.600",
+      "known_latest": "Agent 1.0.14669.400",
       "check_type": "manual",
       "check_source": null,
       "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent",
-      "note": "ZIP via Portal pruefen, Agent Production: 1.0.13514.600"
+      "note": "ZIP via Portal pruefen, Agent Production: 1.0.14669.400 (Juni 2026)"
     },
     {
       "name": "JsonADDomainExtension",
@@ -121,7 +121,7 @@
     }
   ],
   "_meta": {
-    "last_updated": "2026-03-27",
+    "last_updated": "2026-08-15",
     "description": "Tracked versions for Puppet Forge, GitHub Releases and AVD Components"
   }
 }
