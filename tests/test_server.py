@@ -696,7 +696,7 @@ def test_get_http_session_has_retry_adapter():
     session = server._get_http_session()
     adapter = session.get_adapter('https://example.com')
     assert isinstance(adapter, server.HTTPAdapter)
-    assert adapter.max_retries.total == 3
+    assert adapter.max_retries.total == 1
     assert 429 in adapter.max_retries.status_forcelist
     assert 503 in adapter.max_retries.status_forcelist
 
@@ -1310,6 +1310,22 @@ def test_csp_contains_frame_ancestors_none(client):
     res = client.get('/')
     csp = res.headers.get('Content-Security-Policy', '')
     assert "frame-ancestors 'none'" in csp
+
+
+def test_api_responses_have_cdn_cache_headers(client):
+    """API-Antworten tragen s-maxage fuer das Vercel-Edge-Caching."""
+    with patch.object(server, 'fetch_modules_data', return_value=[]):
+        res = client.get('/api/modules')
+    cc = res.headers.get('Cache-Control', '')
+    assert 's-maxage=300' in cc
+    assert 'stale-while-revalidate' in cc
+
+
+def test_api_error_responses_not_cdn_cached(client):
+    """Fehlerantworten (500) werden nicht am Edge gecacht."""
+    with patch.object(server, 'fetch_modules_data', side_effect=Exception('x')):
+        res = client.get('/api/modules')
+    assert 's-maxage' not in res.headers.get('Cache-Control', '')
 
 
 def test_static_files_have_cache_headers(client):
