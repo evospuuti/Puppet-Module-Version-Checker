@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     loadStatus();
 
-    // Prefetch für Unterseiten-Daten
-    prefetchData(['/api/modules', '/api/avd-components']);
+    // Prefetch für Unterseiten-Daten (?v=2 = Cache-Key der AVD-Inventar-Seite)
+    prefetchData(['/api/modules', '/api/avd-components?v=2']);
 });
 
 function loadStatus() {
@@ -26,7 +26,7 @@ function loadStatus() {
 
             var row2 = document.createElement('tr');
             row2.innerHTML =
-                '<td>AVD Komponenten</td>' +
+                '<td>AVD Inventar</td>' +
                 '<td><span class="badge ' + getBadgeClass(data.avd.status) + '">' + escapeHtml(data.avd.status) + '</span></td>' +
                 '<td>' + escapeHtml(data.avd.details) + '</td>';
             fragment.appendChild(row2);

@@ -1,20 +1,27 @@
-var components = [];
-var CATEGORY_ORDER = ['Runner', 'Spoke', 'Session Host', 'Azure Allgemein'];
+// AVD-Versionsinventar: gruppierte Darstellung nach Kategorie, mit
+// Status-Badges (aktuell/veraltet/suppressed/...), Terminen, Kontrakten
+// und bewussten Entscheidungen (Hinweise).
+
+// ?v=2: eigener Cache-Key, damit alte localStorage-Eintraege mit dem
+// frueheren Array-Format nicht gegen das neue Objekt-Format laufen
+var AVD_API_URL = '/api/avd-components?v=2';
+
+var inventory = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    fetchComponents();
+    fetchInventory();
     document.getElementById('refreshBtn').addEventListener('click', function() {
-        try { localStorage.removeItem(_getCacheKey('/api/avd-components')); } catch(e) {}
-        fetchComponents();
+        try { localStorage.removeItem(_getCacheKey(AVD_API_URL)); } catch(e) {}
+        fetchInventory();
     });
 });
 
-function fetchComponents() {
-    fetchSWR('/api/avd-components',
+function fetchInventory() {
+    fetchSWR(AVD_API_URL,
         function(data, isFresh) {
-            components = data;
-            renderCategories();
-            updateStats();
+            if (!data || !data.items) return; // altes Cache-Format ignorieren
+            inventory = data;
+            renderAll();
 
             var ts = document.getElementById('lastUpdated');
             if (ts) {
@@ -33,72 +40,81 @@ function fetchComponents() {
         function() {
             var container = document.getElementById('categoryGroups');
             container.textContent = '';
-            for (var i = 0; i < CATEGORY_ORDER.length; i++) {
+            for (var i = 0; i < 3; i++) {
                 var card = document.createElement('div');
                 card.className = 'card';
-                card.innerHTML = '<h3 class="category-title mb-2">' + escapeHtml(CATEGORY_ORDER[i]) + '</h3>' +
-                    '<div class="table-container"><table><thead><tr>' +
-                    '<th>Name</th><th>Ort</th><th>Tracked</th><th>Neueste</th><th>Status</th><th>Link</th>' +
-                    '</tr></thead><tbody></tbody></table></div>';
-                var tbody = card.querySelector('tbody');
-                tbody.appendChild(createSkeletonRows(2, 6));
+                card.innerHTML = '<div class="table-container"><table><tbody></tbody></table></div>';
+                card.querySelector('tbody').appendChild(createSkeletonRows(4, 6));
                 container.appendChild(card);
             }
         }
     );
 }
 
-function renderCategories() {
-    var grouped = {};
-    for (var i = 0; i < CATEGORY_ORDER.length; i++) {
-        grouped[CATEGORY_ORDER[i]] = [];
-    }
-    for (var j = 0; j < components.length; j++) {
-        var cat = components[j].category || 'Azure Allgemein';
-        if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push(components[j]);
-    }
+function renderAll() {
+    updateStats();
+    renderCategories();
+    renderTermine();
+    renderKontrakte();
+    renderHinweise();
+}
 
+function updateStats() {
+    var counts = { current: 0, outdated: 0, floating: 0, manual: 0, intern: 0, error: 0 };
+    var items = inventory.items;
+    for (var i = 0; i < items.length; i++) {
+        var s = items[i].status;
+        if (s === 'current' || s === 'suppressed') counts.current++;
+        else if (s === 'outdated') counts.outdated++;
+        else if (s === 'floating') counts.floating++;
+        else if (s === 'manual' || s === 'azure') counts.manual++;
+        else if (s === 'intern') counts.intern++;
+        else if (s === 'error') counts.error++;
+    }
+    document.getElementById('currentCount').textContent = counts.current;
+    document.getElementById('outdatedCount').textContent = counts.outdated;
+    document.getElementById('floatingCount').textContent = counts.floating;
+    document.getElementById('manualCount').textContent = counts.manual;
+    document.getElementById('internCount').textContent = counts.intern;
+    document.getElementById('errorCount').textContent = counts.error;
+}
+
+function renderCategories() {
     var container = document.getElementById('categoryGroups');
     container.textContent = '';
 
-    for (var k = 0; k < CATEGORY_ORDER.length; k++) {
-        var catName = CATEGORY_ORDER[k];
-        var items = grouped[catName];
-        if (!items || items.length === 0) continue;
+    var kategorien = inventory.kategorien || [];
+    for (var k = 0; k < kategorien.length; k++) {
+        var kat = kategorien[k];
+        var items = inventory.items.filter(function(it) { return it.kategorie === kat.key; });
+        if (!items.length) continue;
 
         var card = document.createElement('div');
         card.className = 'card';
 
         var title = document.createElement('h3');
-        title.className = 'category-title mb-2';
-        title.textContent = catName;
+        title.className = 'category-title';
+        title.textContent = kat.titel;
         card.appendChild(title);
+
+        if (kat.hinweis) {
+            var sub = document.createElement('p');
+            sub.className = 'text-muted text-small mb-2';
+            sub.textContent = kat.hinweis;
+            card.appendChild(sub);
+        }
 
         var tableWrap = document.createElement('div');
         tableWrap.className = 'table-container';
         var table = document.createElement('table');
         table.innerHTML =
             '<thead><tr>' +
-            '<th>Name</th><th>Ort</th><th>Tracked</th><th>Neueste</th><th>Status</th><th>Link</th>' +
+            '<th>Artefakt</th><th>Ist</th><th>Art</th><th>Neueste</th><th>Status</th><th>Repo</th><th>Link</th>' +
             '</tr></thead>';
         var tbody = document.createElement('tbody');
 
         for (var m = 0; m < items.length; m++) {
-            var c = items[m];
-            var noteHtml = c.note ? ' <span class="text-muted text-small">(' + escapeHtml(c.note) + ')</span>' : '';
-            var linkHtml = c.link
-                ? '<a href="' + escapeHtml(c.link) + '" target="_blank" rel="noopener noreferrer">Docs</a>'
-                : '-';
-            var tr = document.createElement('tr');
-            tr.innerHTML =
-                '<td><strong>' + escapeHtml(c.name) + '</strong>' + noteHtml + '</td>' +
-                '<td class="text-muted"><code>' + escapeHtml(c.location) + '</code></td>' +
-                '<td><code>' + escapeHtml(c.tracked) + '</code></td>' +
-                '<td><code>' + escapeHtml(c.latestVersion) + '</code></td>' +
-                '<td><span class="badge ' + getBadgeClass(c.status) + '">' + getStatusText(c.status) + '</span></td>' +
-                '<td>' + linkHtml + '</td>';
-            tbody.appendChild(tr);
+            tbody.appendChild(buildItemRow(items[m]));
         }
 
         table.appendChild(tbody);
@@ -108,32 +124,153 @@ function renderCategories() {
     }
 }
 
-// 'current' wird als Alias für 'checked' akzeptiert, damit alte
-// localStorage-Caches nach dem Deploy nicht als Fehler angezeigt werden
-function isChecked(status) {
-    return status === 'checked' || status === 'current';
+function buildItemRow(c) {
+    var tr = document.createElement('tr');
+
+    var detailBits = [];
+    if (c.constraint) detailBits.push('Constraint: <code>' + escapeHtml(c.constraint) + '</code>');
+    if (c.note) detailBits.push(escapeHtml(c.note));
+    if (c.suppression && c.suppression.grund) {
+        detailBits.push('<span class="suppression-note">Suppression: ' + escapeHtml(c.suppression.grund) +
+            (c.suppression.trigger ? ' &middot; Trigger: ' + escapeHtml(c.suppression.trigger) : '') + '</span>');
+    }
+    if (c.fundorte && c.fundorte.length) {
+        detailBits.push('<span class="fundort">' + escapeHtml(c.fundorte.join(' · ')) + '</span>');
+    }
+    var detailHtml = detailBits.length
+        ? '<div class="text-muted text-small item-details">' + detailBits.join('<br>') + '</div>'
+        : '';
+
+    var repoHtml = (c.repo || []).map(function(r) {
+        return '<span class="chip">' + escapeHtml(r) + '</span>';
+    }).join(' ');
+
+    var linkHtml = c.link
+        ? '<a href="' + escapeHtml(c.link) + '" target="_blank" rel="noopener noreferrer">' +
+          (c.link.indexOf('github.com') !== -1 ? 'GitHub' : 'Docs') + '</a>'
+        : '-';
+
+    var errHtml = c.error ? '<div class="text-danger text-small">' + escapeHtml(c.error) + '</div>' : '';
+
+    tr.innerHTML =
+        '<td><strong>' + escapeHtml(c.artefakt) + '</strong>' + detailHtml + '</td>' +
+        '<td><code>' + escapeHtml(c.ist == null ? '-' : c.ist) + '</code></td>' +
+        '<td><span class="chip">' + escapeHtml(c.artLabel || artText(c.art)) + '</span></td>' +
+        '<td><code>' + escapeHtml(c.latest == null ? '-' : c.latest) + '</code></td>' +
+        '<td><span class="badge ' + getBadgeClass(c.status) + '">' + getStatusText(c.status) + '</span>' + errHtml + '</td>' +
+        '<td>' + repoHtml + '</td>' +
+        '<td>' + linkHtml + '</td>';
+    return tr;
 }
 
-function updateStats() {
-    var checked = 0, manual = 0, errors = 0;
-    for (var i = 0; i < components.length; i++) {
-        if (isChecked(components[i].status)) checked++;
-        else if (components[i].status === 'manual') manual++;
-        else if (components[i].status === 'error') errors++;
+function renderTermine() {
+    var container = document.getElementById('termineSection');
+    container.textContent = '';
+    var termine = inventory.termine || [];
+    if (!termine.length) return;
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<h3 class="category-title">Termine &amp; Verfallsdaten</h3>' +
+        '<p class="text-muted text-small mb-2">Timeline für anstehende Entscheidungen und Fristen</p>' +
+        '<div class="table-container"><table><thead><tr>' +
+        '<th>Datum</th><th>Ereignis</th><th>Status</th>' +
+        '</tr></thead><tbody></tbody></table></div>';
+    var tbody = card.querySelector('tbody');
+
+    var now = Date.now();
+    for (var i = 0; i < termine.length; i++) {
+        var t = termine[i];
+        var done = /^erledigt/.test(t.status || '');
+        var due = Date.parse(t.datum);
+        var soon = !done && !isNaN(due) && (due - now) < 60 * 24 * 3600 * 1000;
+        var badgeClass = done ? 'badge-success' : (soon ? 'badge-warning' : 'badge-neutral');
+
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td class="nowrap"><code>' + escapeHtml(t.datumLabel || formatDate(t.datum)) + '</code></td>' +
+            '<td>' + escapeHtml(t.ereignis) + '</td>' +
+            '<td><span class="badge ' + badgeClass + '">' + escapeHtml(t.status) + '</span></td>';
+        tbody.appendChild(tr);
     }
-    document.getElementById('currentCount').textContent = checked;
-    document.getElementById('manualCount').textContent = manual;
-    document.getElementById('errorCount').textContent = errors;
+    container.appendChild(card);
+}
+
+function renderKontrakte() {
+    var container = document.getElementById('kontrakteSection');
+    container.textContent = '';
+    var kontrakte = inventory.kontrakte || [];
+    if (!kontrakte.length) return;
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<h3 class="category-title">Cross-Repo-Kontrakte</h3>' +
+        '<p class="text-muted text-small mb-2">Konsistenz statt Latest - Werte müssen zwischen den Repos übereinstimmen</p>' +
+        '<div class="table-container"><table><thead><tr>' +
+        '<th>Kontrakt</th><th>Beteiligte</th><th>Prüfung</th>' +
+        '</tr></thead><tbody></tbody></table></div>';
+    var tbody = card.querySelector('tbody');
+
+    for (var i = 0; i < kontrakte.length; i++) {
+        var k = kontrakte[i];
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td><strong>' + escapeHtml(k.name) + '</strong></td>' +
+            '<td>' + escapeHtml(k.beteiligte) +
+                (k.fundorte ? '<div class="text-muted text-small fundort">' + escapeHtml(k.fundorte) + '</div>' : '') + '</td>' +
+            '<td>' + escapeHtml(k.pruefung) + '</td>';
+        tbody.appendChild(tr);
+    }
+    container.appendChild(card);
+}
+
+function renderHinweise() {
+    var container = document.getElementById('hinweiseSection');
+    container.textContent = '';
+    var hinweise = inventory.hinweise || [];
+    if (!hinweise.length) return;
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    var listHtml = hinweise.map(function(h) {
+        return '<li>' + escapeHtml(h) + '</li>';
+    }).join('');
+    card.innerHTML = '<h3 class="category-title">Bewusste Entscheidungen</h3>' +
+        '<p class="text-muted text-small mb-2">Sieht wie ein Befund aus, ist aber ein dokumentierter Entscheid - nicht alarmieren</p>' +
+        '<ul class="hint-list">' + listHtml + '</ul>';
+    container.appendChild(card);
+}
+
+function formatDate(iso) {
+    if (!iso) return '-';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('de-DE', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
+function artText(art) {
+    if (art === 'pin') return 'Pin';
+    if (art === 'lock') return 'Lock';
+    if (art === 'constraint') return 'Constraint';
+    if (art === 'floating') return 'Floating';
+    return 'Intern';
 }
 
 function getBadgeClass(status) {
-    if (isChecked(status)) return 'badge-success';
-    if (status === 'manual') return 'badge-warning';
-    return 'badge-danger';
+    if (status === 'current') return 'badge-success';
+    if (status === 'outdated') return 'badge-warning';
+    if (status === 'error') return 'badge-danger';
+    if (status === 'suppressed') return 'badge-info';
+    return 'badge-neutral';
 }
 
 function getStatusText(status) {
-    if (isChecked(status)) return 'Geprüft';
+    if (status === 'current') return 'Aktuell';
+    if (status === 'outdated') return 'Update';
+    if (status === 'suppressed') return 'Suppressed';
+    if (status === 'floating') return 'Floating';
+    if (status === 'azure') return 'Azure (kein Abruf)';
     if (status === 'manual') return 'Manuell';
+    if (status === 'intern') return 'Intern';
     return 'Fehler';
 }

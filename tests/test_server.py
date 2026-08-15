@@ -8,10 +8,12 @@ import server
 
 @pytest.fixture(autouse=True)
 def reset_versions_cache():
-    """Reset the in-memory versions cache before each test."""
+    """Reset the in-memory versions/inventory caches before each test."""
     server._versions_cache = None
+    server._inventory_cache = None
     yield
     server._versions_cache = None
+    server._inventory_cache = None
 
 
 @pytest.fixture(autouse=True)
@@ -43,18 +45,35 @@ def mock_versions():
     return {
         "puppet_modules": {
             "puppetlabs-stdlib": "9.7.0"
-        },
-        "avd_components": [
-            {
-                "name": "Terraform",
-                "category": "Runner",
-                "location": "spoke/providers.tf",
-                "tracked": ">= 1.14.0",
-                "check_type": "github_release",
-                "check_source": "hashicorp/terraform",
-                "link": "https://github.com/hashicorp/terraform/releases"
-            }
-        ]
+        }
+    }
+
+
+def _item(**overrides):
+    """Baut einen minimalen Inventar-Eintrag fuer Tests."""
+    base = {
+        'id': 'test-item', 'kategorie': 'toolchain', 'artefakt': 'Test',
+        'repo': ['Core'], 'ist': '1.0.0', 'art': 'pin',
+        'fundorte': ['a.tf:1'],
+        'quelle': {'typ': 'github-release', 'ref': 'foo/bar'},
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.fixture
+def mock_inventory():
+    """Minimales AVD-Inventar fuer Tests."""
+    return {
+        '_meta': {'stand': '2026-08-15'},
+        'kategorien': [{'key': 'toolchain', 'titel': 'Toolchain & IaC'}],
+        'items': [
+            _item(id='a'),
+            _item(id='b', art='intern', quelle={'typ': 'intern'}),
+        ],
+        'kontrakte': [{'name': 'K', 'beteiligte': 'x', 'pruefung': 'y'}],
+        'termine': [{'datum': '2026-08-22', 'ereignis': 'E', 'status': 's'}],
+        'hinweise': ['H'],
     }
 
 
@@ -66,27 +85,7 @@ def multi_module_versions():
             "puppetlabs-stdlib": "9.7.0",
             "puppetlabs-apt": "11.1.0",
             "puppet-archive": "8.1.0",
-        },
-        "avd_components": [
-            {
-                "name": "Terraform",
-                "category": "Runner",
-                "location": "spoke/providers.tf",
-                "tracked": ">= 1.14.0",
-                "check_type": "github_release",
-                "check_source": "hashicorp/terraform",
-                "link": "https://github.com/hashicorp/terraform/releases"
-            },
-            {
-                "name": "AzureRM Provider",
-                "category": "Spoke",
-                "location": "spoke/providers.tf",
-                "tracked": "~> 4.0",
-                "check_type": "terraform_registry",
-                "check_source": "hashicorp/azurerm",
-                "link": "https://github.com/hashicorp/terraform-provider-azurerm/releases"
-            }
-        ]
+        }
     }
 
 
@@ -99,7 +98,7 @@ def test_load_versions_returns_dict():
     result = server.load_versions()
     assert isinstance(result, dict)
     assert 'puppet_modules' in result
-    assert 'avd_components' in result
+    assert 'github_releases' in result
 
 
 def test_load_versions_caches_result():
@@ -113,14 +112,14 @@ def test_load_versions_file_not_found():
     """Gibt leere Defaults zurück wenn versions.json fehlt."""
     with patch('builtins.open', side_effect=FileNotFoundError):
         result = server.load_versions()
-    assert result == {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
+    assert result == {"puppet_modules": {}, "github_releases": {}}
 
 
 def test_load_versions_invalid_json():
     """Gibt leere Defaults zurück bei ungültigem JSON."""
     with patch('builtins.open', side_effect=json.JSONDecodeError("err", "", 0)):
         result = server.load_versions()
-    assert result == {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
+    assert result == {"puppet_modules": {}, "github_releases": {}}
 
 
 def test_load_versions_contains_puppet_modules():
@@ -130,11 +129,7 @@ def test_load_versions_contains_puppet_modules():
     assert len(modules) > 0
 
 
-def test_load_versions_contains_avd_components():
-    """versions.json enthält AVD-Komponenten."""
-    result = server.load_versions()
-    components = result.get('avd_components', [])
-    assert len(components) > 0
+
 
 
 def test_load_versions_puppet_modules_have_versions():
@@ -145,28 +140,50 @@ def test_load_versions_puppet_modules_have_versions():
         assert len(version) > 0, f"{name} hat leere Version"
 
 
-def test_load_versions_avd_components_have_names():
-    """Alle AVD-Komponenten haben einen Namen."""
-    result = server.load_versions()
-    for comp in result.get('avd_components', []):
-        assert 'name' in comp, "AVD-Komponente ohne Name"
-        assert len(comp['name']) > 0, "AVD-Komponente mit leerem Namen"
+def test_load_avd_inventory_returns_dict():
+    """avd_inventory.json wird korrekt geladen."""
+    result = server.load_avd_inventory()
+    assert isinstance(result, dict)
+    assert len(result.get('items', [])) > 0
+    assert len(result.get('kategorien', [])) > 0
 
 
-def test_load_versions_avd_components_have_check_type():
-    """Alle AVD-Komponenten haben einen check_type."""
-    result = server.load_versions()
-    valid_types = {'github_release', 'terraform_registry', 'manual'}
-    for comp in result.get('avd_components', []):
-        assert comp.get('check_type') in valid_types, f"{comp['name']} hat ungültigen check_type"
+def test_load_avd_inventory_caches_result():
+    """Zweiter Aufruf verwendet den In-Memory-Cache."""
+    assert server.load_avd_inventory() is server.load_avd_inventory()
 
 
-def test_load_versions_avd_components_have_category():
-    """Alle AVD-Komponenten haben eine Kategorie."""
-    result = server.load_versions()
-    valid_categories = {'Runner', 'Spoke', 'Session Host', 'Azure Allgemein'}
-    for comp in result.get('avd_components', []):
-        assert comp.get('category') in valid_categories, f"{comp['name']} hat ungültige Kategorie"
+def test_load_avd_inventory_file_not_found():
+    """Gibt leere Defaults zurück wenn avd_inventory.json fehlt."""
+    with patch('builtins.open', side_effect=FileNotFoundError):
+        result = server.load_avd_inventory()
+    assert result['items'] == []
+    assert result['kategorien'] == []
+
+
+def test_load_avd_inventory_items_valid():
+    """Alle Inventar-Eintraege haben id, kategorie, art und gueltigen Quelltyp."""
+    inventory = server.load_avd_inventory()
+    valid_arts = {'pin', 'lock', 'constraint', 'floating', 'intern'}
+    valid_types = server._AUTO_SOURCE_TYPES | {'azure-cli', 'ms-learn', 'vendor-manuell', 'intern'}
+    kategorie_keys = {k['key'] for k in inventory['kategorien']}
+    ids = set()
+    for item in inventory['items']:
+        assert item.get('id'), 'Eintrag ohne id'
+        assert item['id'] not in ids, f"Doppelte id: {item['id']}"
+        ids.add(item['id'])
+        assert item.get('kategorie') in kategorie_keys, f"{item['id']}: unbekannte Kategorie"
+        assert item.get('art') in valid_arts, f"{item['id']}: ungueltige art"
+        assert item.get('quelle', {}).get('typ') in valid_types, f"{item['id']}: ungueltiger Quelltyp"
+
+
+def test_load_avd_inventory_auto_sources_have_ref():
+    """Automatisch pollbare Quellen brauchen eine ref."""
+    inventory = server.load_avd_inventory()
+    for item in inventory['items']:
+        quelle = item.get('quelle', {})
+        if quelle.get('typ') in server._AUTO_SOURCE_TYPES:
+            assert quelle.get('ref'), f"{item['id']}: Quelle ohne ref"
 
 
 def test_load_versions_meta_exists():
@@ -174,6 +191,12 @@ def test_load_versions_meta_exists():
     result = server.load_versions()
     assert '_meta' in result
     assert 'last_updated' in result['_meta']
+
+
+def test_load_versions_contains_github_releases():
+    """versions.json enthält GitHub-Releases."""
+    result = server.load_versions()
+    assert len(result.get('github_releases', {})) > 0
 
 
 # ============================================================================
@@ -378,244 +401,276 @@ def test_fetch_single_module_default_values():
 
 
 # ============================================================================
-# UNIT TESTS - _fetch_single_avd_component
+# UNIT TESTS - Versionsvergleich & Constraints
 # ============================================================================
 
-def test_fetch_avd_component_manual():
-    """Manuelle Komponente gibt status 'manual' zurück."""
-    comp = {
-        'name': 'TLS Minimum',
-        'location': 'modules/storage/main.tf:22',
-        'tracked': 'TLS1_2',
-        'check_type': 'manual',
-        'check_source': None,
-        'link': None,
-        'known_latest': 'TLS 1.2'
-    }
-    result = server._fetch_single_avd_component(comp)
+def test_extract_version():
+    """Versionsnummern werden aus Freitext extrahiert."""
+    assert server._extract_version('v1.2.3') == '1.2.3'
+    assert server._extract_version('Lock 4.81.0 (constraint ~> 4.66)') == '4.81.0'
+    assert server._extract_version('kein Wert') is None
+    assert server._extract_version(None) is None
+
+
+def test_compare_versions():
+    """Numerischer Segmentvergleich."""
+    assert server._compare_versions('1.2.3', '1.2.3') == 0
+    assert server._compare_versions('1.10.0', '1.9.9') == 1
+    assert server._compare_versions('1.2', '1.2.1') == -1
+
+
+def test_satisfies_constraint_range():
+    """Range-Constraints mit >=, != und <."""
+    c = '>= 1.14.0, != 1.15.0, < 2.0.0'
+    assert server._satisfies_constraint('1.14.8', c) is True
+    assert server._satisfies_constraint('1.15.0', c) is False
+    assert server._satisfies_constraint('2.0.0', c) is False
+    assert server._satisfies_constraint('1.13.9', c) is False
+
+
+def test_satisfies_constraint_pessimistic():
+    """Pessimistischer Operator ~> (Terraform-Semantik)."""
+    assert server._satisfies_constraint('0.17.4', '~> 0.17.0') is True
+    assert server._satisfies_constraint('0.18.0', '~> 0.17.0') is False
+    assert server._satisfies_constraint('4.99.0', '~> 4.66') is True
+    assert server._satisfies_constraint('5.0.0', '~> 4.66') is False
+
+
+def test_satisfies_constraint_unparseable():
+    """Nicht auswertbare Constraints geben None zurueck."""
+    assert server._satisfies_constraint('1.0.0', 'irgendwas') is None
+
+
+# ============================================================================
+# UNIT TESTS - _check_inventory_item
+# ============================================================================
+
+def _response(status_code=200, json_data=None, text=''):
+    m = MagicMock()
+    m.status_code = status_code
+    m.json.return_value = json_data if json_data is not None else {}
+    m.text = text
+    return m
+
+
+def test_check_item_pin_current():
+    """Pin: gleiche Version wie Latest -> current."""
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v1.0.0'})):
+        result = server._check_inventory_item(_item())
+    assert result['status'] == 'current'
+    assert result['latest'] == '1.0.0'
+
+
+def test_check_item_pin_outdated():
+    """Pin: neuere Version verfuegbar -> outdated."""
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v2.0.0'})):
+        result = server._check_inventory_item(_item())
+    assert result['status'] == 'outdated'
+    assert result['latest'] == '2.0.0'
+
+
+def test_check_item_pin_outdated_suppressed():
+    """Pin mit Suppression: outdated wird zu suppressed."""
+    item = _item(suppression={'grund': 'bewusster Pin', 'trigger': 'Review'})
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v2.0.0'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'suppressed'
+    assert result['suppression']['grund'] == 'bewusster Pin'
+
+
+def test_check_item_lock_tf_registry():
+    """Lock gegen Terraform Registry."""
+    item = _item(art='lock', ist='4.81.0',
+                 quelle={'typ': 'tf-registry', 'ref': 'hashicorp/azurerm'})
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'version': '4.81.0'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'current'
+    assert result['latest'] == '4.81.0'
+
+
+def test_check_item_constraint_satisfied():
+    """Constraint: Latest innerhalb der Range -> current."""
+    item = _item(art='constraint', ist='0.17.x', constraint='~> 0.17.0')
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v0.17.5'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'current'
+
+
+def test_check_item_constraint_violated():
+    """Constraint: Latest ausserhalb der Range -> outdated."""
+    item = _item(art='constraint', ist='0.17.x', constraint='~> 0.17.0')
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v0.19.0'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'outdated'
+
+
+def test_check_item_constraint_violated_suppressed():
+    """Constraint + Suppression: outdated wird zu suppressed."""
+    item = _item(art='constraint', ist='0.17.x', constraint='~> 0.17.0',
+                 suppression={'grund': 'Issue #166', 'trigger': 'Fix-Release'})
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v0.19.0'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'suppressed'
+
+
+def test_check_item_commit_pin():
+    """Commit-Pin: Prefix-Vergleich gegen den neuesten Commit."""
+    item = _item(ist='10a904c0',
+                 quelle={'typ': 'github-commit', 'ref': 'Azure/RDS-Templates',
+                         'path': 'ARM-wvd-templates/DSC'})
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data=[{'sha': '10a904c0ffffffff'}])):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'current'
+
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data=[{'sha': 'deadbeef00000000'}])):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'outdated'
+
+
+def test_check_item_hashicorp_checkpoint():
+    """HashiCorp Checkpoint liefert current_version."""
+    item = _item(art='constraint', constraint='>= 1.14.0, < 2.0.0',
+                 quelle={'typ': 'hashicorp-checkpoint', 'ref': 'terraform'})
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'current_version': '1.16.2'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'current'
+    assert result['latest'] == '1.16.2'
+
+
+def test_check_item_choco():
+    """Chocolatey-OData wird per Regex geparst."""
+    item = _item(ist='2026.2.14', quelle={'typ': 'choco', 'ref': 'testpkg'})
+    xml = '<feed><d:Version m:type="Edm.String">2026.2.20</d:Version></feed>'
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(text=xml)):
+        result = server._check_inventory_item(item)
+    assert result['latest'] == '2026.2.20'
+    assert result['status'] == 'outdated'
+
+
+def test_check_item_psgallery():
+    """PowerShell-Gallery-OData wird per Regex geparst."""
+    item = _item(ist='1.25.0', quelle={'typ': 'psgallery', 'ref': 'PSScriptAnalyzer'})
+    xml = '<feed><d:Version>1.25.0</d:Version></feed>'
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(text=xml)):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'current'
+
+
+def test_check_item_chrome_floating():
+    """Chrome-Versionhistory: floating zeigt nur das Latest."""
+    item = _item(art='floating', ist='je Build neu',
+                 quelle={'typ': 'chrome-versionhistory', 'ref': 'win64/stable'})
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'versions': [{'version': '139.0.1'}]})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'floating'
+    assert result['latest'] == '139.0.1'
+
+
+def test_check_item_pin_without_version_is_floating():
+    """Pin ohne extrahierbare Ist-Version faellt auf floating zurueck."""
+    item = _item(ist=None)
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v1.0.0'})):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'floating'
+
+
+def test_check_item_intern_no_http():
+    """Interne Eintraege machen keinen HTTP-Call."""
+    item = _item(art='intern', quelle={'typ': 'intern'})
+    with patch.object(server.requests.Session, 'get',
+                      side_effect=AssertionError('kein HTTP erwartet')):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'intern'
+
+
+def test_check_item_azure_no_http():
+    """azure-cli-Quellen brauchen Auth -> Status azure, kein HTTP-Call."""
+    item = _item(quelle={'typ': 'azure-cli', 'ref': 'az vm image show'})
+    with patch.object(server.requests.Session, 'get',
+                      side_effect=AssertionError('kein HTTP erwartet')):
+        result = server._check_inventory_item(item)
+    assert result['status'] == 'azure'
+
+
+def test_check_item_manual_uses_known_latest():
+    """Manuelle Quellen zeigen known_latest als Latest."""
+    item = _item(quelle={'typ': 'ms-learn'}, known_latest='26.01 CU1')
+    result = server._check_inventory_item(item)
     assert result['status'] == 'manual'
-    assert result['latestVersion'] == 'TLS 1.2'
-    assert result['name'] == 'TLS Minimum'
+    assert result['latest'] == '26.01 CU1'
 
 
-def test_fetch_avd_component_manual_without_known_latest():
-    """Manuelle Komponente ohne known_latest zeigt '-'."""
-    comp = {
-        'name': 'Test',
-        'location': 'test',
-        'tracked': '1.0',
-        'check_type': 'manual',
-        'check_source': None,
-        'link': ''
-    }
-    result = server._fetch_single_avd_component(comp)
-    assert result['latestVersion'] == '-'
+def test_check_item_unknown_source_is_manual():
+    """Unbekannte Quelltypen werden als manuell behandelt."""
+    result = server._check_inventory_item(_item(quelle={'typ': 'foo'}))
+    assert result['status'] == 'manual'
 
 
-def test_fetch_avd_component_github_release_current():
-    """GitHub-Release Komponente wird als 'current' erkannt."""
-    comp = {
-        'name': 'Terraform',
-        'location': 'spoke/providers.tf',
-        'tracked': '>= 1.14.0',
-        'check_type': 'github_release',
-        'check_source': 'hashicorp/terraform',
-        'link': 'https://github.com/hashicorp/terraform/releases'
-    }
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'tag_name': 'v1.14.8'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_avd_component(comp)
-
-    assert result['status'] == 'checked'
-    assert result['latestVersion'] == '1.14.8'
-
-
-def test_fetch_avd_component_github_release_strips_v():
-    """GitHub-Release: v-Prefix wird entfernt."""
-    comp = {
-        'name': 'PowerShell',
-        'location': 'Runner',
-        'tracked': '7.x',
-        'check_type': 'github_release',
-        'check_source': 'PowerShell/PowerShell',
-        'link': 'https://github.com/PowerShell/PowerShell/releases'
-    }
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'tag_name': 'v7.5.1'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_avd_component(comp)
-
-    assert result['latestVersion'] == '7.5.1'
-
-
-def test_fetch_avd_component_github_release_http_error():
-    """GitHub-Release: HTTP-Fehler wird als Error-Status zurückgegeben."""
-    comp = {
-        'name': 'Terraform',
-        'location': 'spoke/providers.tf',
-        'tracked': '>= 1.14.0',
-        'check_type': 'github_release',
-        'check_source': 'hashicorp/terraform',
-        'link': 'https://github.com/hashicorp/terraform/releases'
-    }
-    mock_response = MagicMock()
-    mock_response.status_code = 404
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_avd_component(comp)
-
+def test_check_item_http_error():
+    """HTTP-Fehler wird als Error-Status zurueckgegeben."""
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(status_code=404)):
+        result = server._check_inventory_item(_item())
     assert result['status'] == 'error'
     assert 'HTTP 404' in result['error']
 
 
-def test_fetch_avd_component_terraform_registry_current():
-    """Terraform-Registry Komponente wird als 'current' erkannt."""
-    comp = {
-        'name': 'AzureRM Provider',
-        'location': 'spoke/providers.tf',
-        'tracked': '~> 4.0',
-        'check_type': 'terraform_registry',
-        'check_source': 'hashicorp/azurerm',
-        'link': 'https://github.com/hashicorp/terraform-provider-azurerm/releases'
-    }
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {'version': '4.66.0'}
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_avd_component(comp)
-
-    assert result['status'] == 'checked'
-    assert result['latestVersion'] == '4.66.0'
-
-
-def test_fetch_avd_component_terraform_registry_invalid_name():
-    """Terraform-Registry: Ungültiger Provider-Name gibt Error zurück."""
-    comp = {
-        'name': 'Bad Provider',
-        'location': 'test',
-        'tracked': '1.0',
-        'check_type': 'terraform_registry',
-        'check_source': 'invalid-no-slash',
-        'link': ''
-    }
-    result = server._fetch_single_avd_component(comp)
-    assert result['status'] == 'error'
-    assert 'Ungültiger Provider-Name' in result['error']
-
-
-def test_fetch_avd_component_terraform_registry_http_error():
-    """Terraform-Registry: HTTP-Fehler wird als Error-Status zurückgegeben."""
-    comp = {
-        'name': 'AzureRM Provider',
-        'location': 'spoke/providers.tf',
-        'tracked': '~> 4.0',
-        'check_type': 'terraform_registry',
-        'check_source': 'hashicorp/azurerm',
-        'link': ''
-    }
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-
-    with patch.object(server.requests.Session, 'get', return_value=mock_response):
-        result = server._fetch_single_avd_component(comp)
-
-    assert result['status'] == 'error'
-    assert 'HTTP 500' in result['error']
-
-
-def test_fetch_avd_component_timeout():
-    """Timeout wird als Error-Status zurückgegeben."""
-    comp = {
-        'name': 'Terraform',
-        'location': 'test',
-        'tracked': '1.0',
-        'check_type': 'github_release',
-        'check_source': 'hashicorp/terraform',
-        'link': ''
-    }
-    with patch.object(server.requests.Session, 'get', side_effect=server.requests.Timeout):
-        result = server._fetch_single_avd_component(comp)
-
+def test_check_item_timeout():
+    """Timeout wird als Error-Status zurueckgegeben."""
+    with patch.object(server.requests.Session, 'get',
+                      side_effect=server.requests.Timeout):
+        result = server._check_inventory_item(_item())
     assert result['status'] == 'error'
     assert result['error'] == 'Timeout'
 
 
-def test_fetch_avd_component_connection_error():
+def test_check_item_connection_error():
     """Verbindungsfehler wird korrekt behandelt."""
-    comp = {
-        'name': 'Terraform',
-        'location': 'test',
-        'tracked': '1.0',
-        'check_type': 'github_release',
-        'check_source': 'hashicorp/terraform',
-        'link': ''
-    }
     with patch.object(server.requests.Session, 'get',
                       side_effect=server.requests.ConnectionError):
-        result = server._fetch_single_avd_component(comp)
-
+        result = server._check_inventory_item(_item())
     assert result['status'] == 'error'
     assert result['error'] == 'Verbindungsfehler'
 
 
-def test_fetch_avd_component_unexpected_exception():
+def test_check_item_unexpected_exception():
     """Unerwartete Exception wird als Error behandelt."""
-    comp = {
-        'name': 'Terraform',
-        'location': 'test',
-        'tracked': '1.0',
-        'check_type': 'github_release',
-        'check_source': 'hashicorp/terraform',
-        'link': ''
-    }
-    with patch.object(server.requests.Session, 'get', side_effect=RuntimeError('oops')):
-        result = server._fetch_single_avd_component(comp)
-
+    with patch.object(server.requests.Session, 'get',
+                      side_effect=RuntimeError('oops')):
+        result = server._check_inventory_item(_item())
     assert result['status'] == 'error'
     assert result['error'] == 'Unerwarteter Fehler'
 
 
-def test_fetch_avd_component_preserves_fields():
-    """Alle Felder werden korrekt im Ergebnis beibehalten."""
-    comp = {
-        'name': 'DSC Extension',
-        'category': 'Session Host',
-        'location': 'modules/session-host/main.tf:164',
-        'tracked': '2.77',
-        'known_latest': '2.77',
-        'check_type': 'manual',
-        'check_source': None,
-        'link': 'https://learn.microsoft.com/test',
-        'note': 'Retirement 2028-03-31'
-    }
-    result = server._fetch_single_avd_component(comp)
-    assert result['name'] == 'DSC Extension'
-    assert result['category'] == 'Session Host'
-    assert result['location'] == 'modules/session-host/main.tf:164'
-    assert result['tracked'] == '2.77'
-    assert result['latestVersion'] == '2.77'
-    assert result['link'] == 'https://learn.microsoft.com/test'
-    assert result['note'] == 'Retirement 2028-03-31'
-
-
-def test_fetch_avd_component_default_note():
-    """Fehlende note gibt leeren String zurück."""
-    comp = {
-        'name': 'Test',
-        'location': 'test',
-        'tracked': '1.0',
-        'check_type': 'manual',
-        'check_source': None,
-        'link': ''
-    }
-    result = server._fetch_single_avd_component(comp)
-    assert result['note'] == ''
+def test_check_item_preserves_fields():
+    """Alle Felder werden korrekt ins Ergebnis uebernommen."""
+    item = _item(id='x', artefakt='Artefakt X', repo=['Core', 'Packer'],
+                 artLabel='Hash-Pin', link='https://example.com',
+                 note='Notiz', fundorte=['f.tf:1', 'g.ps1:2'])
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_response(json_data={'tag_name': 'v1.0.0'})):
+        result = server._check_inventory_item(item)
+    assert result['id'] == 'x'
+    assert result['artefakt'] == 'Artefakt X'
+    assert result['repo'] == ['Core', 'Packer']
+    assert result['artLabel'] == 'Hash-Pin'
+    assert result['link'] == 'https://example.com'
+    assert result['note'] == 'Notiz'
+    assert result['fundorte'] == ['f.tf:1', 'g.ps1:2']
 
 
 # ============================================================================
@@ -699,39 +754,59 @@ def test_get_http_session_pool_maxsize():
 # UNIT TESTS - fetch_all_data (autoresearch-Pattern: paralleler Fetch)
 # ============================================================================
 
-def test_fetch_all_data_returns_both(mock_versions):
-    """fetch_all_data gibt modules und avd_components zurück."""
+def test_fetch_all_data_returns_both(mock_versions, mock_inventory):
+    """fetch_all_data gibt modules und das AVD-Inventar zurück."""
     mock_module = MagicMock()
     mock_module.status_code = 200
     mock_module.json.return_value = {
         'current_release': {'version': '9.7.0'},
-        'deprecated_at': None
+        'deprecated_at': None,
+        'tag_name': 'v1.0.0'
     }
-    mock_gh = MagicMock()
-    mock_gh.status_code = 200
-    mock_gh.json.return_value = {'tag_name': 'v1.14.8'}
 
     with patch.object(server, 'load_versions', return_value=mock_versions), \
-         patch.object(server.requests.Session, 'get',
-                      side_effect=[mock_module, mock_gh]):
+         patch.object(server, 'load_avd_inventory', return_value=mock_inventory), \
+         patch.object(server.requests.Session, 'get', return_value=mock_module):
         result = server.fetch_all_data()
 
     assert 'modules' in result
-    assert 'avd_components' in result
+    assert 'avd' in result
     assert len(result['modules']) == 1
-    assert len(result['avd_components']) == 1
+    assert len(result['avd']['items']) == 2
+    assert result['avd']['kontrakte'] == mock_inventory['kontrakte']
+    assert result['avd']['termine'] == mock_inventory['termine']
+    assert result['avd']['hinweise'] == mock_inventory['hinweise']
+
+
+def test_fetch_all_data_preserves_item_order(mock_versions, mock_inventory):
+    """Inventar-Reihenfolge bleibt trotz as_completed erhalten."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        'current_release': {'version': '9.7.0'},
+        'deprecated_at': None,
+        'tag_name': 'v1.0.0'
+    }
+    with patch.object(server, 'load_versions', return_value=mock_versions), \
+         patch.object(server, 'load_avd_inventory', return_value=mock_inventory), \
+         patch.object(server.requests.Session, 'get', return_value=mock_response):
+        result = server.fetch_all_data()
+
+    assert [i['id'] for i in result['avd']['items']] == ['a', 'b']
 
 
 def test_fetch_all_data_empty_versions():
-    """fetch_all_data mit leeren Versionen gibt leere Listen zurück."""
-    with patch.object(server, 'load_versions',
-                      return_value={"puppet_modules": {}, "avd_components": []}):
+    """fetch_all_data mit leeren Quellen gibt leere Listen zurück."""
+    with patch.object(server, 'load_versions', return_value={"puppet_modules": {}}), \
+         patch.object(server, 'load_avd_inventory',
+                      return_value=dict(server._EMPTY_INVENTORY)):
         result = server.fetch_all_data()
 
-    assert result == {'modules': [], 'avd_components': []}
+    assert result['modules'] == []
+    assert result['avd']['items'] == []
 
 
-def test_fetch_all_data_multiple_items(multi_module_versions):
+def test_fetch_all_data_multiple_items(multi_module_versions, mock_inventory):
     """fetch_all_data mit mehreren Items."""
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -743,14 +818,15 @@ def test_fetch_all_data_multiple_items(multi_module_versions):
     }
 
     with patch.object(server, 'load_versions', return_value=multi_module_versions), \
+         patch.object(server, 'load_avd_inventory', return_value=mock_inventory), \
          patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server.fetch_all_data()
 
     assert len(result['modules']) == 3
-    assert len(result['avd_components']) == 2
+    assert len(result['avd']['items']) == 2
 
 
-def test_fetch_all_data_handles_mixed_errors(mock_versions):
+def test_fetch_all_data_handles_mixed_errors(mock_versions, mock_inventory):
     """fetch_all_data: Ein Fehler beeinflusst nicht die anderen."""
     mock_module = MagicMock()
     mock_module.status_code = 200
@@ -765,13 +841,15 @@ def test_fetch_all_data_handles_mixed_errors(mock_versions):
         raise server.requests.Timeout()
 
     with patch.object(server, 'load_versions', return_value=mock_versions), \
+         patch.object(server, 'load_avd_inventory', return_value=mock_inventory), \
          patch.object(server.requests.Session, 'get', side_effect=side_effect):
         result = server.fetch_all_data()
 
     assert len(result['modules']) == 1
-    assert len(result['avd_components']) == 1
+    assert len(result['avd']['items']) == 2
     assert result['modules'][0]['status'] == 'current'
-    assert result['avd_components'][0]['status'] == 'error'
+    assert result['avd']['items'][0]['status'] == 'error'
+    assert result['avd']['items'][1]['status'] == 'intern'
 
 
 # ============================================================================
@@ -814,25 +892,32 @@ def test_api_modules_with_data(client):
     assert data[0]['name'] == 'test'
 
 
+_EMPTY_AVD = {'items': [], 'kategorien': [], 'kontrakte': [],
+              'termine': [], 'hinweise': [], 'meta': {}}
+
+
 def test_api_avd_components_returns_json(client):
     """GET /api/avd-components gibt JSON zurück."""
-    with patch.object(server, 'fetch_avd_data', return_value=[]):
+    with patch.object(server, 'fetch_avd_data', return_value=dict(_EMPTY_AVD)):
         res = client.get('/api/avd-components')
     assert res.status_code == 200
     assert res.content_type == 'application/json'
 
 
-def test_api_avd_components_returns_list(client):
-    """GET /api/avd-components gibt eine Liste zurück."""
-    with patch.object(server, 'fetch_avd_data', return_value=[]):
+def test_api_avd_components_returns_inventory_object(client):
+    """GET /api/avd-components gibt das Inventar-Objekt zurück."""
+    with patch.object(server, 'fetch_avd_data', return_value=dict(_EMPTY_AVD)):
         res = client.get('/api/avd-components')
-    assert isinstance(res.get_json(), list)
+    data = res.get_json()
+    assert isinstance(data, dict)
+    for key in ('items', 'kategorien', 'kontrakte', 'termine', 'hinweise'):
+        assert key in data
 
 
 def test_api_system_status_returns_all_fields(client):
     """GET /api/system_status enthält puppet, avd und timestamp."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'avd_components': []}):
+                      return_value={'modules': [], 'avd': {'items': []}}):
         res = client.get('/api/system_status')
 
     data = res.get_json()
@@ -846,7 +931,7 @@ def test_api_system_status_returns_all_fields(client):
 def test_api_system_status_timestamp_format(client):
     """Timestamp hat Format YYYY-MM-DD HH:MM:SS."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'avd_components': []}):
+                      return_value={'modules': [], 'avd': {'items': []}}):
         res = client.get('/api/system_status')
     data = res.get_json()
     # Prüfe Format: "2026-03-14 12:00:00"
@@ -858,7 +943,7 @@ def test_api_system_status_timestamp_format(client):
 def test_api_system_status_puppet_has_status_and_details(client):
     """Puppet-Status enthält status und details."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'avd_components': []}):
+                      return_value={'modules': [], 'avd': {'items': []}}):
         res = client.get('/api/system_status')
     data = res.get_json()
     assert 'status' in data['puppet']
@@ -868,7 +953,7 @@ def test_api_system_status_puppet_has_status_and_details(client):
 def test_api_system_status_avd_has_status_and_details(client):
     """AVD-Status enthält status und details."""
     with patch.object(server, 'fetch_all_data',
-                      return_value={'modules': [], 'avd_components': []}):
+                      return_value={'modules': [], 'avd': {'items': []}}):
         res = client.get('/api/system_status')
     data = res.get_json()
     assert 'status' in data['avd']
@@ -882,7 +967,7 @@ def test_api_system_status_detects_outdated(client):
             {'status': 'current', 'deprecated': False},
             {'status': 'outdated', 'deprecated': False},
         ],
-        'avd_components': []
+        'avd': {'items': []}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -900,7 +985,7 @@ def test_api_system_status_detects_multiple_outdated(client):
             {'status': 'outdated', 'deprecated': False},
             {'status': 'outdated', 'deprecated': False},
         ],
-        'avd_components': []
+        'avd': {'items': []}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -916,7 +1001,7 @@ def test_api_system_status_detects_deprecated(client):
             {'status': 'outdated', 'deprecated': True},
             {'status': 'outdated', 'deprecated': False},
         ],
-        'avd_components': []
+        'avd': {'items': []}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -929,27 +1014,27 @@ def test_api_system_status_detects_avd_errors(client):
     """System-Status erkennt AVD-Komponenten Fehler."""
     mock_data = {
         'modules': [],
-        'avd_components': [
-            {'status': 'checked'},
+        'avd': {'items': [
+            {'status': 'current'},
             {'status': 'error'},
-        ]
+        ]}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
 
     data = res.get_json()
     assert data['avd']['status'] == 'Warnung'
-    assert '1 Komponenten mit Fehlern' in data['avd']['details']
+    assert '1 Checks fehlgeschlagen' in data['avd']['details']
 
 
 def test_api_system_status_detects_avd_manual(client):
     """System-Status erkennt manuelle AVD-Komponenten."""
     mock_data = {
         'modules': [],
-        'avd_components': [
-            {'status': 'checked'},
+        'avd': {'items': [
+            {'status': 'current'},
             {'status': 'manual'},
-        ]
+        ]}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -964,10 +1049,10 @@ def test_api_system_status_avd_errors_prio_over_manual(client):
     """AVD: Fehler haben Priorität über manuell."""
     mock_data = {
         'modules': [],
-        'avd_components': [
+        'avd': {'items': [
             {'status': 'error'},
             {'status': 'manual'},
-        ]
+        ]}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -980,7 +1065,7 @@ def test_api_system_status_all_ok(client):
     """System-Status ist OK wenn alles aktuell."""
     mock_data = {
         'modules': [{'status': 'current', 'deprecated': False}],
-        'avd_components': [{'status': 'checked'}]
+        'avd': {'items': [{'status': 'current'}]}
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -1006,7 +1091,7 @@ def test_api_versions_returns_json(client):
     assert res.status_code == 200
     data = res.get_json()
     assert 'puppet_modules' in data
-    assert 'avd_components' in data
+    assert 'github_releases' in data
 
 
 def test_api_versions_contains_modules(client):
@@ -1016,11 +1101,11 @@ def test_api_versions_contains_modules(client):
     assert len(data['puppet_modules']) > 0
 
 
-def test_api_versions_contains_avd_components(client):
-    """GET /api/versions enthält AVD-Komponenten."""
+def test_api_versions_contains_github_releases(client):
+    """GET /api/versions enthält GitHub-Releases."""
     res = client.get('/api/versions')
     data = res.get_json()
-    assert len(data['avd_components']) > 0
+    assert len(data['github_releases']) > 0
 
 
 def test_api_modules_error_returns_500(client):
@@ -1064,7 +1149,7 @@ def test_api_modules_only_get_allowed(client):
 
 def test_api_avd_only_get_allowed(client):
     """POST auf /api/avd-components gibt 405 zurück."""
-    with patch.object(server, 'fetch_avd_data', return_value=[]):
+    with patch.object(server, 'fetch_avd_data', return_value=dict(_EMPTY_AVD)):
         res = client.post('/api/avd-components')
     assert res.status_code == 405
 
@@ -1098,7 +1183,7 @@ def test_serve_avd_page(client):
     """GET /avd.html liefert die AVD-Seite."""
     res = client.get('/avd.html')
     assert res.status_code == 200
-    assert b'AVD Komponenten' in res.data
+    assert b'AVD Versionsinventar' in res.data
 
 
 def test_serve_unknown_path_returns_404(client):

@@ -42,7 +42,9 @@ def _mock_forge_response(version='9.7.0', deprecated=None):
 def _mock_registry_response(version='3.7.2'):
     m = MagicMock()
     m.status_code = 200
-    m.json.return_value = {'version': version}
+    m.json.return_value = {'version': version, 'current_version': version,
+                           'versions': [{'version': version}]}
+    m.text = '<d:Version>%s</d:Version>' % version
     return m
 
 
@@ -50,6 +52,7 @@ def _mock_github_response(tag='v1.14.8'):
     m = MagicMock()
     m.status_code = 200
     m.json.return_value = {'tag_name': tag}
+    m.text = ''
     return m
 
 
@@ -239,23 +242,25 @@ class TestSingleFetchOverhead:
         _print_result('_fetch_single_module (mocked, no delay)', result)
         assert result['median'] < 5, f"Zu viel Overhead: {result['median']:.3f}ms"
 
-    def test_fetch_single_avd_component_overhead(self):
-        comp = {
-            'name': 'Terraform',
-            'category': 'Runner',
-            'location': 'Runner (vorinstalliert)',
-            'tracked': '>= 1.14.0',
-            'check_type': 'github_release',
-            'check_source': 'hashicorp/terraform',
-            'link': 'https://github.com/hashicorp/terraform/releases'
+    def test_check_inventory_item_overhead(self):
+        item = {
+            'id': 'terraform-binary',
+            'kategorie': 'toolchain',
+            'artefakt': 'Terraform',
+            'repo': ['Core'],
+            'ist': '1.14.0',
+            'constraint': '>= 1.14.0, < 2.0.0',
+            'art': 'constraint',
+            'fundorte': ['providers.tf:16'],
+            'quelle': {'typ': 'github-release', 'ref': 'hashicorp/terraform'},
         }
         mock = _mock_github_response()
         with patch.object(server.requests.Session, 'get', return_value=mock):
             result = _measure_ms(
-                lambda: server._fetch_single_avd_component(comp),
+                lambda: server._check_inventory_item(item),
                 iterations=50
             )
-        _print_result('_fetch_single_avd_component (mocked, no delay)', result)
+        _print_result('_check_inventory_item (mocked, no delay)', result)
         assert result['median'] < 5, f"Zu viel Overhead: {result['median']:.3f}ms"
 
 
