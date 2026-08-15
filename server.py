@@ -78,6 +78,15 @@ def add_security_headers(response):
     if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
         response.headers['Cache-Control'] = 'public, max-age=86400'
 
+    # CDN-Caching für API-Antworten: Browser cacht nicht (max-age=0), aber die
+    # Vercel-Edge cacht 5 Minuten (s-maxage) und liefert danach bis zu 10
+    # Minuten stale aus, während im Hintergrund revalidiert wird. Damit
+    # erreichen die meisten Requests die Serverless Function gar nicht.
+    if (request.path.startswith('/api/') and request.method == 'GET'
+            and response.status_code == 200):
+        response.headers['Cache-Control'] = (
+            'public, max-age=0, s-maxage=300, stale-while-revalidate=600')
+
     return response
 
 # ============================================================================
@@ -205,9 +214,11 @@ def _get_http_session():
         session.headers.update({'User-Agent': 'Version-Checker/2.0'})
 
         # Exponential Backoff Retry (autoresearch-Pattern: retry with 2^attempt backoff)
+        # Nur 1 Retry mit kurzem Backoff: worst case bleibt ein einzelner
+        # Check unter ~9s statt >30s (3 Retries mit exponentiellem Backoff)
         retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
+            total=1,
+            backoff_factor=0.5,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET"],
             raise_on_status=False,
@@ -241,7 +252,7 @@ def _fetch_single_module(module_name, installed_version):
     session = _get_http_session()
     try:
         url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=_REQUEST_TIMEOUT)
 
         if response.status_code == 200:
             data = response.json()
@@ -290,7 +301,7 @@ def _fetch_single_github_release(repo_name, tracked_version):
 
     try:
         url = f'https://api.github.com/repos/{repo_name}/releases/latest'
-        response = session.get(url, timeout=10, headers=headers)
+        response = session.get(url, timeout=_REQUEST_TIMEOUT, headers=headers)
 
         if response.status_code == 200:
             data = response.json()
@@ -319,6 +330,10 @@ def _fetch_single_github_release(repo_name, tracked_version):
     return release_data
 
 
+# Kurzer Timeout pro Upstream-Call: bei ~35 parallelen Checks muss auch der
+# langsamste Call sicher unter dem Vercel-Funktionslimit (10s) bleiben.
+_REQUEST_TIMEOUT = 4
+
 # Quelltypen, die ohne Auth automatisch pollbar sind
 _AUTO_SOURCE_TYPES = {'github-release', 'github-commit', 'tf-registry',
                       'hashicorp-checkpoint', 'choco', 'psgallery',
@@ -343,7 +358,7 @@ def _fetch_latest_for_source(quelle):
 
         if typ == 'github-release':
             url = f'https://api.github.com/repos/{ref}/releases/latest'
-            response = session.get(url, timeout=10, headers=headers)
+            response = session.get(url, timeout=_REQUEST_TIMEOUT, headers=headers)
             if response.status_code == 200:
                 tag = response.json().get('tag_name', '')
                 if tag:
@@ -353,7 +368,7 @@ def _fetch_latest_for_source(quelle):
             path = quelle.get('path', '')
             url = (f'https://api.github.com/repos/{ref}/commits'
                    f'?path={path}&per_page=1')
-            response = session.get(url, timeout=10, headers=headers)
+            response = session.get(url, timeout=_REQUEST_TIMEOUT, headers=headers)
             if response.status_code == 200:
                 commits = response.json()
                 if commits and commits[0].get('sha'):
@@ -362,7 +377,7 @@ def _fetch_latest_for_source(quelle):
 
     elif typ == 'tf-registry':
         url = f'https://registry.terraform.io/v1/providers/{ref}'
-        response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
+        response = session.get(url, timeout=_REQUEST_TIMEOUT, headers={'Accept': 'application/json'})
         if response.status_code == 200:
             version = response.json().get('version', '')
             if version:
@@ -371,7 +386,7 @@ def _fetch_latest_for_source(quelle):
 
     elif typ == 'hashicorp-checkpoint':
         url = f'https://checkpoint-api.hashicorp.com/v1/check/{ref}'
-        response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
+        response = session.get(url, timeout=_REQUEST_TIMEOUT, headers={'Accept': 'application/json'})
         if response.status_code == 200:
             version = response.json().get('current_version', '')
             if version:
@@ -381,7 +396,7 @@ def _fetch_latest_for_source(quelle):
     elif typ == 'choco':
         url = ("https://community.chocolatey.org/api/v2/Packages()"
                f"?$filter=Id%20eq%20%27{ref}%27%20and%20IsLatestVersion")
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=_REQUEST_TIMEOUT)
         if response.status_code == 200:
             m = _ODATA_VERSION_RE.search(response.text)
             if m:
@@ -391,7 +406,7 @@ def _fetch_latest_for_source(quelle):
     elif typ == 'psgallery':
         url = ("https://www.powershellgallery.com/api/v2/FindPackagesById()"
                f"?id=%27{ref}%27&$filter=IsLatestVersion")
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=_REQUEST_TIMEOUT)
         if response.status_code == 200:
             m = _ODATA_VERSION_RE.search(response.text)
             if m:
@@ -401,7 +416,7 @@ def _fetch_latest_for_source(quelle):
     elif typ == 'chrome-versionhistory':
         url = ('https://versionhistory.googleapis.com/v1/chrome/platforms/'
                'win64/channels/stable/versions?pageSize=1')
-        response = session.get(url, timeout=10)
+        response = session.get(url, timeout=_REQUEST_TIMEOUT)
         if response.status_code == 200:
             versions = response.json().get('versions', [])
             if versions and versions[0].get('version'):
