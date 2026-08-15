@@ -1,0 +1,739 @@
+{
+  "_meta": {
+    "beschreibung": "AVD-Versionsinventar der vier Repos (AVD-Core, AVD-Image-Packer, AVD-AMS, AVD-SAP). art steuert die Vergleichslogik, quelle.typ den Poller.",
+    "stand": "2026-08-15",
+    "repos": ["Core", "Packer", "AMS", "SAP"]
+  },
+  "kategorien": [
+    {"key": "toolchain", "titel": "Toolchain & IaC", "hinweis": "Terraform, Provider, Packer, Test-Tooling"},
+    {"key": "supply-chain", "titel": "Supply-Chain-Pins", "hinweis": "Hash-Pins, CVE-Floors, Commit-Pins - hier heisst veraltet ggf. verwundbar"},
+    {"key": "floating", "titel": "Floating »latest«", "hinweis": "Drift by design - Anzeige des aktuell Verfuegbaren, kein Veraltet-Alarm"},
+    {"key": "azure-api", "titel": "Azure-API-Versionen", "hinweis": "REST-Kontrakte in Skripten - veralten langsam, brechen hart (Retirement)"},
+    {"key": "extensions-host", "titel": "Extensions & Host-Konfiguration", "hinweis": "Was auf den Session Hosts laeuft"},
+    {"key": "os-image", "titel": "OS & Basisimage", "hinweis": "Windows-Release-Zyklus und Build-Kontrakte"}
+  ],
+  "items": [
+    {
+      "id": "terraform-binary",
+      "kategorie": "toolchain",
+      "artefakt": "Terraform (Agent-Binary)",
+      "repo": ["Core"],
+      "ist": "1.14.x",
+      "constraint": ">= 1.14.0, != 1.15.0, < 2.0.0",
+      "art": "constraint",
+      "fundorte": ["stacks/*/providers.tf:16f", "scripts/quality/assert-terraform-version.ps1:19,23"],
+      "quelle": {"typ": "hashicorp-checkpoint", "ref": "terraform"},
+      "link": "https://github.com/hashicorp/terraform/releases",
+      "note": "!= 1.15.0 wegen Backend-Bug, 1.15.1+ ok - Block bleibt dauerhaft korrekt"
+    },
+    {
+      "id": "provider-azurerm",
+      "kategorie": "toolchain",
+      "artefakt": "Provider azurerm",
+      "repo": ["Core"],
+      "ist": "4.81.0",
+      "constraint": "~> 4.66",
+      "art": "lock",
+      "fundorte": ["stacks/{session-hosts,spoke}/.terraform.lock.hcl:4", "providers.tf", "modules/communication/main.tf"],
+      "quelle": {"typ": "tf-registry", "ref": "hashicorp/azurerm"},
+      "link": "https://github.com/hashicorp/terraform-provider-azurerm/releases",
+      "note": "4.80 ueberspringen (Regression); 5.0-Evaluierung separater Entscheid nach 22.08."
+    },
+    {
+      "id": "provider-time",
+      "kategorie": "toolchain",
+      "artefakt": "Provider time",
+      "repo": ["Core"],
+      "ist": "0.14.0",
+      "constraint": "~> 0.13",
+      "art": "lock",
+      "fundorte": [".terraform.lock.hcl:24", "modules/key-vault/main.tf:14"],
+      "quelle": {"typ": "tf-registry", "ref": "hashicorp/time"},
+      "link": "https://registry.terraform.io/providers/hashicorp/time"
+    },
+    {
+      "id": "packer-binary",
+      "kategorie": "toolchain",
+      "artefakt": "Packer (Pipeline-Binary)",
+      "repo": ["Packer"],
+      "ist": null,
+      "art": "floating",
+      "artLabel": "Pin (extern)",
+      "fundorte": ["azure-pipelines.yml:85", "scripts/pipeline/Ensure-ImageBuildTooling.ps1:67-85"],
+      "quelle": {"typ": "hashicorp-checkpoint", "ref": "packer"},
+      "link": "https://github.com/hashicorp/packer/releases",
+      "note": "Version in ADO Variable Group AVD-Image-Packer (PACKER_VERSION), nicht im Repo; Download mit SHA256SUMS-Verifikation"
+    },
+    {
+      "id": "packer-required-version",
+      "kategorie": "toolchain",
+      "artefakt": "Packer required_version",
+      "repo": ["Packer"],
+      "ist": "1.14.x",
+      "constraint": ">= 1.14.0, < 2.0.0",
+      "art": "constraint",
+      "fundorte": ["plugins.pkr.hcl:11"],
+      "quelle": {"typ": "hashicorp-checkpoint", "ref": "packer"},
+      "link": "https://github.com/hashicorp/packer/releases"
+    },
+    {
+      "id": "packer-plugin-azure",
+      "kategorie": "toolchain",
+      "artefakt": "packer-plugin-azure",
+      "repo": ["Packer"],
+      "ist": "2.6.3",
+      "art": "pin",
+      "fundorte": ["plugins.pkr.hcl:18"],
+      "quelle": {"typ": "github-release", "ref": "hashicorp/packer-plugin-azure"},
+      "link": "https://github.com/hashicorp/packer-plugin-azure/releases",
+      "suppression": {
+        "grund": "Harter Pin: 2.6.2 aenderte den WinRM-Default still",
+        "trigger": "Upgrade nur mit Changelog-Review",
+        "entschieden": "2026-07-16"
+      }
+    },
+    {
+      "id": "packer-plugin-windows-update",
+      "kategorie": "toolchain",
+      "artefakt": "packer-plugin-windows-update (rgl)",
+      "repo": ["Packer"],
+      "ist": "0.17.x",
+      "constraint": "~> 0.17.0",
+      "art": "constraint",
+      "fundorte": ["plugins.pkr.hcl:24"],
+      "quelle": {"typ": "github-release", "ref": "rgl/packer-plugin-windows-update"},
+      "link": "https://github.com/rgl/packer-plugin-windows-update/issues/166",
+      "suppression": {
+        "grund": "Issue #166 Reboot-Loop in 0.18.x - NICHT auf 0.18/0.19 heben",
+        "trigger": "Fix-Release upstream",
+        "entschieden": "2026-07-16"
+      }
+    },
+    {
+      "id": "psscriptanalyzer",
+      "kategorie": "toolchain",
+      "artefakt": "PSScriptAnalyzer",
+      "repo": ["Core", "Packer"],
+      "ist": "1.25.0",
+      "art": "pin",
+      "fundorte": ["scripts/quality/test-powershell-quality.ps1:36", "scripts/pipeline/Test-PowerShellQuality.ps1:24"],
+      "quelle": {"typ": "psgallery", "ref": "PSScriptAnalyzer"},
+      "link": "https://www.powershellgallery.com/packages/PSScriptAnalyzer",
+      "note": "In beiden Repos gepinnt, fail-closed"
+    },
+    {
+      "id": "pester",
+      "kategorie": "toolchain",
+      "artefakt": "Pester",
+      "repo": ["Packer"],
+      "ist": "6.0.0",
+      "art": "pin",
+      "fundorte": ["scripts/pipeline/Invoke-RepoTests.ps1:26"],
+      "quelle": {"typ": "psgallery", "ref": "Pester"},
+      "link": "https://www.powershellgallery.com/packages/Pester",
+      "note": "Nur Packer; Core hat eigene Suite ohne Pester"
+    },
+    {
+      "id": "nuget-packageprovider",
+      "kategorie": "toolchain",
+      "artefakt": "NuGet PackageProvider",
+      "repo": ["Packer"],
+      "ist": ">= 2.8.5.201",
+      "art": "intern",
+      "artLabel": "Floor",
+      "fundorte": ["Invoke-RepoTests.ps1:46"],
+      "quelle": {"typ": "intern"},
+      "note": "Nur Floor, kein Latest-Vergleich noetig"
+    },
+    {
+      "id": "ado-pipeline-agent",
+      "kategorie": "toolchain",
+      "artefakt": "ADO-Pipeline-Agent (Runner)",
+      "repo": ["Core"],
+      "ist": "4.271.0",
+      "art": "pin",
+      "artLabel": "Ist-Stand",
+      "fundorte": ["docs/operations/production-readiness.md:49"],
+      "quelle": {"typ": "github-release", "ref": "microsoft/azure-pipelines-agent"},
+      "link": "https://github.com/microsoft/azure-pipelines-agent/releases",
+      "note": "Ist-Stand auf inf-app-3 (Doku 01.08.); realer Ist via ADO-Pool-API"
+    },
+    {
+      "id": "powershell-runtimes",
+      "kategorie": "toolchain",
+      "artefakt": "PowerShell-Runtimes",
+      "repo": ["Core", "Packer"],
+      "ist": "pwsh 7 + WinPS 5.1",
+      "art": "floating",
+      "artLabel": "Floor",
+      "fundorte": ["je Skript Zeile 1 (#Requires 7.0 in 34+ Skripten)", "tests/wrapper-style.tests.ps1:19"],
+      "quelle": {"typ": "github-release", "ref": "PowerShell/PowerShell"},
+      "link": "https://github.com/PowerShell/PowerShell/releases",
+      "note": "3 Skripte laufen auf Windows PowerShell 5.1 (Runner); Runner-Ist via tools/Check-RunnerTools.ps1"
+    },
+    {
+      "id": "python-pyyaml",
+      "kategorie": "toolchain",
+      "artefakt": "Python + PyYAML (YAML-Gate)",
+      "repo": ["Core"],
+      "ist": "ungepinnt (Python 3)",
+      "art": "intern",
+      "artLabel": "Floating",
+      "fundorte": ["scripts/quality/test-repo.ps1:24,87-95", "AMS/CONTRIBUTING.md:25"],
+      "quelle": {"typ": "intern"},
+      "note": "Nur Praesenz-Check am Runner"
+    },
+    {
+      "id": "ado-task-majors",
+      "kategorie": "toolchain",
+      "artefakt": "ADO-Task-Majors",
+      "repo": ["Core", "Packer"],
+      "ist": "PowerShell@2, AzureCLI@2, PublishPipelineArtifact@1, DownloadPipelineArtifact@2, PublishTestResults@2",
+      "art": "pin",
+      "artLabel": "Task-Major",
+      "fundorte": ["pipelines/templates/*.yml", "azure-pipelines.yml"],
+      "quelle": {"typ": "vendor-manuell"},
+      "link": "https://learn.microsoft.com/en-us/azure/devops/release-notes/",
+      "note": "ADO-Sprint-Notes beobachten (Node-Runner-Deprecations; AzureCLI@3 existiert)"
+    },
+    {
+      "id": "dsc-paket-commit",
+      "kategorie": "supply-chain",
+      "artefakt": "DSC-Paket (AVD-Agent-Install)",
+      "repo": ["Core"],
+      "ist": "10a904c0",
+      "art": "pin",
+      "artLabel": "Commit-Pin",
+      "fundorte": ["modules/session-host/variables.tf:150"],
+      "quelle": {"typ": "github-commit", "ref": "Azure/RDS-Templates", "path": "ARM-wvd-templates/DSC"},
+      "link": "https://github.com/Azure/RDS-Templates/tree/master/ARM-wvd-templates/DSC",
+      "note": "Stand master@2026-07-02"
+    },
+    {
+      "id": "citrix-secure-access",
+      "kategorie": "supply-chain",
+      "artefakt": "Citrix Secure Access Client",
+      "repo": ["Packer"],
+      "ist": "26.6.1.20",
+      "art": "pin",
+      "artLabel": "Hash-Pin + CVE-Floor",
+      "fundorte": ["image.auto.pkrvars.hcl:78-82", "Install-CitrixSecureAccess.ps1:40"],
+      "quelle": {"typ": "vendor-manuell"},
+      "link": "https://support.citrix.com/securitybulletins",
+      "note": "Blob software/agee64.msi + SHA256 + Code-Floor MinimumVersion (CVE-2026-53565/-53566, zuletzt CTX696734) - jeden Zyklus pruefen"
+    },
+    {
+      "id": "sap-gui",
+      "kategorie": "supply-chain",
+      "artefakt": "SAP GUI",
+      "repo": ["Packer"],
+      "ist": "8.10 Comp. 1",
+      "art": "pin",
+      "artLabel": "Hash-Pin",
+      "fundorte": ["image.auto.pkrvars.hcl:85-96"],
+      "quelle": {"typ": "vendor-manuell"},
+      "link": "https://me.sap.com/",
+      "note": "Blob SAP_GUI_810_Win64.ZIP (Material 50167926) + SHA256; kein oeffentliches API"
+    },
+    {
+      "id": "greenshot",
+      "kategorie": "supply-chain",
+      "artefakt": "Greenshot",
+      "repo": ["Packer"],
+      "ist": "1.3.315",
+      "art": "pin",
+      "artLabel": "Hash-Pin",
+      "fundorte": ["Install-Greenshot.ps1:32-35"],
+      "quelle": {"typ": "github-release", "ref": "greenshot/greenshot"},
+      "link": "https://github.com/greenshot/greenshot/releases",
+      "note": "Versionierte GitHub-URL + SHA256 (erfasst 17.07.)"
+    },
+    {
+      "id": "remote-desktop-manager",
+      "kategorie": "supply-chain",
+      "artefakt": "Remote Desktop Manager",
+      "repo": ["Packer"],
+      "ist": "2026.2.14",
+      "art": "pin",
+      "fundorte": ["Install-RDM.ps1:26", "InstallerConfigs.Tests.ps1:66"],
+      "quelle": {"typ": "vendor-manuell"},
+      "link": "https://devolutions.net/remote-desktop-manager/release-notes/",
+      "note": "Einziges gepinntes Choco-Paket (--version); RDM shippt ~woechentlich; Paket-ID s. Install-RDM.ps1"
+    },
+    {
+      "id": "fod-lof-iso",
+      "kategorie": "supply-chain",
+      "artefakt": "FOD/LOF-ISO (Sprachpakete)",
+      "repo": ["Packer"],
+      "ist": "26100.1.240331-1435",
+      "art": "pin",
+      "artLabel": "Build-Pin",
+      "fundorte": ["variables.pkr.hcl:65", "image.auto.pkrvars.hcl:25-31"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/language-packs",
+      "note": "Blob, SHA256 bewusst leer (Audit 06.08.); deckt 24H2+25H2 - erst bei 26H2-Umstieg neu"
+    },
+    {
+      "id": "dsc-extension-handler",
+      "kategorie": "supply-chain",
+      "artefakt": "DSC-Extension Handler",
+      "repo": ["Core"],
+      "ist": "2.77",
+      "art": "floating",
+      "artLabel": "Minor-Float",
+      "fundorte": ["modules/session-host/variables.tf:161-168", "main.tf:177"],
+      "quelle": {"typ": "azure-cli", "ref": "az vm extension image list --publisher Microsoft.Powershell"},
+      "link": "https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-windows",
+      "known_latest": "2.83",
+      "note": "Startversion + auto_upgrade_minor_version; DSC-Extension-Retirement 31.03.2028"
+    },
+    {
+      "id": "jsonaddomainextension",
+      "kategorie": "supply-chain",
+      "artefakt": "JsonADDomainExtension",
+      "repo": ["Core"],
+      "ist": "1.3",
+      "art": "floating",
+      "artLabel": "Minor-Float",
+      "fundorte": ["modules/session-host/main.tf:144"],
+      "quelle": {"typ": "azure-cli", "ref": "az vm extension image list --publisher Microsoft.Compute"},
+      "link": "https://learn.microsoft.com/en-us/entra/identity/domain-services/join-windows-vm-template",
+      "known_latest": "1.3",
+      "note": "auto_upgrade_minor_version aktiv"
+    },
+    {
+      "id": "marketplace-basisimage",
+      "kategorie": "floating",
+      "artefakt": "Marketplace-Basisimage",
+      "repo": ["Packer"],
+      "ist": "26200.8875.260714 (Volllauf 29.07.)",
+      "art": "floating",
+      "fundorte": ["image.auto.pkrvars.hcl:20-23", "azure-pipelines.yml:240-266", "production-readiness.md:52"],
+      "quelle": {"typ": "azure-cli", "ref": "az vm image show --urn MicrosoftWindowsDesktop:office-365:win11-25h2-avd-m365:latest"},
+      "note": "URN ...:latest wird zur Buildzeit aufgeloest und als -var gepinnt"
+    },
+    {
+      "id": "gallery-image-spokes",
+      "kategorie": "floating",
+      "artefakt": "Gallery-Image (Spokes)",
+      "repo": ["AMS", "SAP"],
+      "ist": "aktive Slot-Version im Rotation-State (13.08.: 2026.0813.*)",
+      "art": "floating",
+      "fundorte": ["terraform/config/session-hosts.tfvars:19 bzw. :9"],
+      "quelle": {"typ": "azure-cli", "ref": "az sig image-version list -g packer-img-rg -r packer_img_gallery -i avd"},
+      "note": "image_version = \"latest\" - Rotation pinnt zur Laufzeit (resolve once, then pin)"
+    },
+    {
+      "id": "core-ref-spokes",
+      "kategorie": "floating",
+      "artefakt": "Core-Referenz der Spokes",
+      "repo": ["AMS", "SAP"],
+      "ist": "refs/heads/master (heute 50deccf)",
+      "art": "intern",
+      "artLabel": "Floating",
+      "fundorte": ["pipelines/*.yml (je ref-Zeile, 10 Huellen)"],
+      "quelle": {"typ": "intern"},
+      "note": "Rueckbau-Entscheid 05.08., kein Tag-Pinning - by design floating, nur Anzeige, kein Drift-Alarm"
+    },
+    {
+      "id": "choco-packages",
+      "kategorie": "floating",
+      "artefakt": "14 Chocolatey-Pakete (ungepinnt)",
+      "repo": ["Packer"],
+      "ist": "je Build neu - Ist nur im Image (Test-Image-Log)",
+      "art": "floating",
+      "fundorte": ["image.auto.pkrvars.hcl:45-63"],
+      "quelle": {"typ": "vendor-manuell"},
+      "link": "https://community.chocolatey.org/packages",
+      "note": "7zip, adobereader, azure-cli, citrix-workspace, dotnet-10.0-desktopruntime, git, keepass, notepadplusplus, packer, powershell-core, putty.portable, terraform, vscode, winscp"
+    },
+    {
+      "id": "google-chrome",
+      "kategorie": "floating",
+      "artefakt": "Google Chrome Enterprise",
+      "repo": ["Packer"],
+      "ist": "je Build neu",
+      "art": "floating",
+      "fundorte": ["Install-ChocoPackages.ps1:339"],
+      "quelle": {"typ": "chrome-versionhistory", "ref": "win64/stable"},
+      "link": "https://chromereleases.googleblog.com/",
+      "note": "MSI direkt von dl.google.com, ungepinnt, kein Hash (Checksum-Begruendung im Repo)"
+    },
+    {
+      "id": "fslogix",
+      "kategorie": "floating",
+      "artefakt": "FSLogix",
+      "repo": ["Packer"],
+      "ist": "je Build neu (aka.ms/fslogix_download)",
+      "art": "floating",
+      "fundorte": ["Install-FSLogix.ps1:37-39"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/fslogix/overview-release-notes",
+      "known_latest": "26.01 CU1 (3.26.126.19110)",
+      "note": "Pfad-Kontrakt x64\\Release\\FSLogixAppsSetup.exe; monatliche Pruefpflicht lt. image-update-baseline"
+    },
+    {
+      "id": "teams-new",
+      "kategorie": "floating",
+      "artefakt": "Teams (new) + Bootstrapper",
+      "repo": ["Packer"],
+      "ist": "je Build neu (2 fwlink-URLs)",
+      "art": "floating",
+      "fundorte": ["Install-Teams.ps1:61,65,108"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/microsoftteams/new-teams-vdi-requirements-deploy",
+      "note": "Bootstrapper + MSTeams-x64.msix, -p --installTMA"
+    },
+    {
+      "id": "veracrypt",
+      "kategorie": "floating",
+      "artefakt": "VeraCrypt",
+      "repo": ["Packer"],
+      "ist": "je Build neu (GitHub releases/latest)",
+      "art": "floating",
+      "fundorte": ["Install-VeraCrypt.ps1:36,65-67"],
+      "quelle": {"typ": "github-release", "ref": "veracrypt/VeraCrypt"},
+      "link": "https://github.com/veracrypt/VeraCrypt/releases",
+      "note": "Asset-Regex VeraCrypt_Setup_x64_*.msi, bewusst ohne Hash (Entscheid 18.07.)"
+    },
+    {
+      "id": "azure-cli-tooling",
+      "kategorie": "floating",
+      "artefakt": "Azure CLI (Runner + Image)",
+      "repo": ["Packer"],
+      "ist": "je Lauf/Build neu",
+      "art": "floating",
+      "fundorte": ["Ensure-ImageBuildTooling.ps1:102", "image.auto.pkrvars.hcl:47"],
+      "quelle": {"typ": "github-release", "ref": "Azure/azure-cli"},
+      "link": "https://github.com/Azure/azure-cli/releases",
+      "note": "Runner: aka.ms/installazurecliwindowsx64; Image: Choco ungepinnt"
+    },
+    {
+      "id": "chocolatey-cli",
+      "kategorie": "floating",
+      "artefakt": "Chocolatey CLI (Bootstrap)",
+      "repo": ["Packer"],
+      "ist": "je Build neu (install.ps1, immer latest)",
+      "art": "floating",
+      "fundorte": ["Install-ChocoPackages.ps1:161"],
+      "quelle": {"typ": "choco", "ref": "chocolatey"},
+      "link": "https://community.chocolatey.org/packages/chocolatey"
+    },
+    {
+      "id": "onedrive-webrtc",
+      "kategorie": "floating",
+      "artefakt": "OneDrive / WebRTC Redirector",
+      "repo": ["Packer"],
+      "ist": "folgt Basisimage-Stand",
+      "art": "floating",
+      "fundorte": ["Test-Image.ps1:102,179-201"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-webrtc",
+      "note": "Aus Basisimage uebernommen, nur Praesenz-Checks; Redirector bleibt als Fallback (PR-90-Entscheid)"
+    },
+    {
+      "id": "avd-data-plane-api",
+      "kategorie": "azure-api",
+      "artefakt": "AVD Data Plane (DesktopVirtualization)",
+      "repo": ["Core"],
+      "ist": "2025-10-10",
+      "art": "pin",
+      "fundorte": ["AzureAvd.psm1:8", "AzureAvdWrite.psm1:7", "tests/api-version-consistency.tests.ps1"],
+      "quelle": {"typ": "azure-cli", "ref": "az provider show -n Microsoft.DesktopVirtualization --query resourceTypes[].apiVersions"},
+      "link": "https://learn.microsoft.com/en-us/rest/api/desktopvirtualization/",
+      "note": "Zentral in 2 Modulen + 7 Skripten, Gleichheit per Contract-Test erzwungen"
+    },
+    {
+      "id": "arm-storage-api",
+      "kategorie": "azure-api",
+      "artefakt": "ARM Storage",
+      "repo": ["Core"],
+      "ist": "2024-01-01",
+      "art": "pin",
+      "fundorte": ["configure-fslogix-ntfs-acls.ps1:46"],
+      "quelle": {"typ": "azure-cli", "ref": "az provider show -n Microsoft.Storage"},
+      "note": "Bewusst eigener Lebenszyklus, vom Konsistenz-Guard ausgenommen"
+    },
+    {
+      "id": "filerest-xms-version",
+      "kategorie": "azure-api",
+      "artefakt": "FileREST Data Plane (x-ms-version)",
+      "repo": ["Core", "Packer"],
+      "ist": "2024-11-04",
+      "art": "pin",
+      "artLabel": "Floor",
+      "fundorte": ["configure-fslogix-ntfs-acls.ps1:57,199", "BlobArtifact.ps1:99"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/rest/api/storageservices/versioning-for-the-azure-storage-services",
+      "note": "Mindestversion ist Kontrakt (409-OAuth-Sperre auf Neukonten mit aelteren Werten, Entscheid 12.08.); Downgrade-Guards in beiden Test-Suiten"
+    },
+    {
+      "id": "acs-email-api",
+      "kategorie": "azure-api",
+      "artefakt": "ACS Email",
+      "repo": ["Core", "Packer"],
+      "ist": "2023-03-31",
+      "art": "pin",
+      "fundorte": ["send-rotation-notification.ps1:143", "Send-BuildNotification.ps1:199"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/rest/api/communication/email",
+      "note": "GA-Version (Quelle abgerufen 02.07.) + Contract-Tests"
+    },
+    {
+      "id": "ado-rest-api",
+      "kategorie": "azure-api",
+      "artefakt": "Azure DevOps REST",
+      "repo": ["Core"],
+      "ist": "7.1",
+      "art": "pin",
+      "fundorte": ["send-rotation-notification.ps1:126"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/rest/api/azure/devops",
+      "note": "Build Timeline"
+    },
+    {
+      "id": "imds-token-api",
+      "kategorie": "azure-api",
+      "artefakt": "IMDS Token",
+      "repo": ["Packer"],
+      "ist": "2018-02-01",
+      "art": "intern",
+      "fundorte": ["BlobArtifact.ps1:25"],
+      "quelle": {"typ": "intern"},
+      "note": "Stabil, quasi-permanent - kein Handlungsbedarf, nur Doku"
+    },
+    {
+      "id": "ms-graph-api",
+      "kategorie": "azure-api",
+      "artefakt": "Microsoft Graph",
+      "repo": ["Core"],
+      "ist": "v1.0 (kein beta)",
+      "art": "intern",
+      "fundorte": ["AadKerbSetup.psm1:335,431,441"],
+      "quelle": {"typ": "intern"},
+      "note": "applications, servicePrincipals, appRoleAssignments; v1.0 ist dauerhaft"
+    },
+    {
+      "id": "avd-agent",
+      "kategorie": "extensions-host",
+      "artefakt": "AVD-Agent / BootLoader",
+      "repo": ["Core"],
+      "ist": "kein Pin - via DSC-Paket (UseAgentDownloadEndpoint=true)",
+      "art": "floating",
+      "fundorte": ["modules/session-host/main.tf:181-188"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/azure/virtual-desktop/whats-new-agent",
+      "known_latest": "1.0.14669.400 (Production, Juni 2026)",
+      "note": "Rotation erneuert monatlich; monatliche Pruefpflicht lt. Baseline"
+    },
+    {
+      "id": "agent-updates-enabled",
+      "kategorie": "extensions-host",
+      "artefakt": "agent_updates_enabled",
+      "repo": ["Core"],
+      "ist": "false (Default)",
+      "art": "intern",
+      "fundorte": ["modules/host-pool/variables.tf:122-127"],
+      "quelle": {"typ": "intern"},
+      "suppression": {
+        "grund": "By design - Rotation ersetzt Hosts monatlich",
+        "trigger": "Nur bei Wechsel des Rotationsmodells neu bewerten",
+        "entschieden": "2026-07-16"
+      }
+    },
+    {
+      "id": "windows-app-client",
+      "kategorie": "extensions-host",
+      "artefakt": "Windows App (Client-Seite)",
+      "repo": ["Core"],
+      "ist": ">= 2.0.1069.0",
+      "art": "pin",
+      "artLabel": "Floor",
+      "fundorte": ["docs/operations/technology-radar.md:97-98"],
+      "quelle": {"typ": "ms-learn"},
+      "link": "https://learn.microsoft.com/en-us/windows-app/whats-new",
+      "note": "Mindestversion fuer RDP Multipath (Radar-Stand 10.07.)"
+    },
+    {
+      "id": "smb-kerberos-haertung",
+      "kategorie": "extensions-host",
+      "artefakt": "SMB/Kerberos-Haertung",
+      "repo": ["Core"],
+      "ist": "SMB 3.1.1, Kerberos AES-256, AES-GCM/CCM-Ciphers, TLS 1.2",
+      "art": "intern",
+      "fundorte": ["modules/storage/main.tf:24,62-65"],
+      "quelle": {"typ": "intern"},
+      "note": "Kontrakt (Vorfall 18.07. dokumentiert) - kein Latest-Vergleich"
+    },
+    {
+      "id": "vcpp-redist",
+      "kategorie": "extensions-host",
+      "artefakt": "VC++ Redistributable",
+      "repo": ["Packer"],
+      "ist": "Registry-Kontrakt VC 14.0 x64 Installed=1",
+      "art": "intern",
+      "fundorte": ["Test-Image.ps1:113"],
+      "quelle": {"typ": "intern"},
+      "note": "Praesenz-Check im Image-Test"
+    },
+    {
+      "id": "windows-11-release",
+      "kategorie": "os-image",
+      "artefakt": "Windows-11-Release",
+      "repo": ["Packer"],
+      "ist": "25H2 (win11-25h2-avd-m365, Multi-Session + M365)",
+      "art": "floating",
+      "fundorte": ["image.auto.pkrvars.hcl:22", "technology-radar.md:121-127"],
+      "quelle": {"typ": "azure-cli", "ref": "az vm image list-skus -p MicrosoftWindowsDesktop -f office-365"},
+      "note": "26H2 = Insider, erwartet Herbst 2026 als Enablement Package; neue SKU = Signal"
+    },
+    {
+      "id": "windows-update-build",
+      "kategorie": "os-image",
+      "artefakt": "Windows Update im Build",
+      "repo": ["Packer"],
+      "ist": "1x am Ende; Excludes: *Preview*, *Driver*, KB5007651; Limit 100",
+      "art": "intern",
+      "fundorte": ["avd-image.pkr.hcl:296-311"],
+      "quelle": {"typ": "intern"},
+      "suppression": {
+        "grund": "KB5007651-Exclude gehoert zum windows-update-Plugin-Workaround-Paar",
+        "trigger": "Erst mit Plugin-Upgrade (Issue #166 Fix) entfernen",
+        "entschieden": "2026-07-16"
+      }
+    },
+    {
+      "id": "output-versionsschema",
+      "kategorie": "os-image",
+      "artefakt": "Output-Versionsschema",
+      "repo": ["Packer", "Core"],
+      "ist": "YYYY.MMDD.hhmm (UTC, monoton)",
+      "art": "intern",
+      "fundorte": ["avd-image.pkr.hcl:20", "RotationSchedule.psm1:59 (Regex)"],
+      "quelle": {"typ": "intern"},
+      "note": "Kontrakt des Core-Frische-Guards; Schema-Abgleich Packer-formatdate <-> Core-Regex + Contract-Tests beidseitig"
+    },
+    {
+      "id": "gallery-retention",
+      "kategorie": "os-image",
+      "artefakt": "Gallery-Retention",
+      "repo": ["Packer"],
+      "ist": "KeepCount = 5",
+      "art": "floating",
+      "fundorte": ["azure-pipelines.yml:37", "Invoke-ImageRetentionCleanup.ps1:19"],
+      "quelle": {"typ": "azure-cli", "ref": "az sig image-version list (Ist-Zaehlung gegen Soll 5)"},
+      "note": "Pipeline-Var + Skript-Default, [version]-Sortierung fail-closed"
+    },
+    {
+      "id": "build-rhythmus",
+      "kategorie": "os-image",
+      "artefakt": "Build-Rhythmus",
+      "repo": ["Packer", "AMS", "SAP"],
+      "ist": "Cron 0 3 * * Thu + Fenster-Guard 2. Donnerstag; Switch Anker-Samstag (AMS 10:00, SAP 12:00 UTC), Cleanup Fr/Sa davor",
+      "art": "intern",
+      "fundorte": ["azure-pipelines.yml:27-32", "rotation-*.yml je Spoke"],
+      "quelle": {"typ": "intern"},
+      "note": "Cron-Staffelung als Konsistenz-Check (AMS vor SAP)"
+    }
+  ],
+  "kontrakte": [
+    {
+      "name": "Gallery-Kette",
+      "beteiligte": "packer_img_gallery / packer-img-rg / avd identisch in Packer-Ziel, Core-Resolver und beiden Spoke-tfvars",
+      "pruefung": "String-Gleichheit ueber 4 Repos",
+      "fundorte": "Packer image_name; Core resolve-image-version.ps1; AMS/SAP session-hosts.tfvars"
+    },
+    {
+      "name": "Frische-Guard-Kette",
+      "beteiligte": "Build-Anker (2. Do) -> Schema YYYY.MMDD.hhmm -> MaxAgeDays 7 -> Anker-Samstag -> MinimumAgeDays 6 (Cleanup) -> KeepCount 5",
+      "pruefung": "Wertekette Ende-zu-Ende",
+      "fundorte": "Packer azure-pipelines.yml; Core resolve-image-version.ps1:47, RotationState.psm1:313; Spoke-Crons"
+    },
+    {
+      "name": "RemoteApp-Pfade",
+      "beteiligte": "11 Pfade je Spoke-tfvars = Golden-Image-Inhalt; versionsbehaftet: PowerShell\\7, KeePass 2, putty.portable-lib, x86-Pfade (WinSCP, Edge, Citrix)",
+      "pruefung": "Pfadliste Spoke <-> Test-Image.ps1-Kontraktpfade",
+      "fundorte": "AMS/SAP spoke.tfvars; Packer Test-Image.ps1:444-475"
+    },
+    {
+      "name": "Template-Signaturen",
+      "beteiligte": "Huellen-Parameter (rotationMode, action, forceEarly, confirmRollback ...) = Core-Template-Signaturen; displayName-Strings der Crons = Schedule-Rollen-Guard D13",
+      "pruefung": "Bereits als Gate vorhanden",
+      "fundorte": "Core scripts/quality/test-spoke-config.ps1"
+    },
+    {
+      "name": "api-version-Konsistenz",
+      "beteiligte": "AVD 2025-10-10 ueberall gleich; FileREST-Floor 2024-11-04 in Core UND Packer",
+      "pruefung": "Contract-Tests gruen?",
+      "fundorte": "Core tests/api-version-consistency.tests.ps1; Packer tests/BlobArtifact.Tests.ps1"
+    },
+    {
+      "name": "Terraform-Version doppelt",
+      "beteiligte": "Deklarativ (providers.tf) und imperativ (assert-terraform-version.ps1) - zwei Wahrheiten, muessen synchron bleiben",
+      "pruefung": "Wert-Abgleich 1.14.0 / 1.15.0-Block",
+      "fundorte": "Core stacks/*/providers.tf <-> scripts/quality/assert-terraform-version.ps1"
+    },
+    {
+      "name": "Doku-Spiegelwerte",
+      "beteiligte": "READMEs/CLAUDE.mds spiegeln Crons, IP-Netze, State-Keys, Storage-Namen - klassische Drift-Kandidaten",
+      "pruefung": "Text-Grep gegen Quelldateien",
+      "fundorte": "z.B. AMS/README.md:13-17; SAP/README.md:17-21"
+    },
+    {
+      "name": "Doku-Kopfdaten (Staleness)",
+      "beteiligte": "technology-radar 10.07.; production-readiness 06.08.; image-update-baseline 02.07.; Audit-Checklist 16.07./06.08.",
+      "pruefung": "Alter in Tagen anzeigen; Radar + Checklist haben monatliche Re-Fetch-Pflicht",
+      "fundorte": "Kopfzeile je Dokument"
+    }
+  ],
+  "termine": [
+    {
+      "datum": "2026-08-22",
+      "ereignis": "azurerm-5.0-Evaluierung fruehestens sinnvoll (nach Cleanup-Automat); resource_provider_registrations bereits gesetzt (5.0-Immunisierung); 4.80 ueberspringen",
+      "status": "anstehende Entscheidung"
+    },
+    {
+      "datum": "2026-10-01",
+      "ereignis": "Teams Classic EoS auf VDI - Redirector bleibt als Fallback, kein Removal-Automatismus; Neubewertung nach SlimCore-Abdeckungspruefung",
+      "status": "entschieden, beobachten"
+    },
+    {
+      "datum": "2026-11-01",
+      "ereignis": "Windows 11 26H2 als Enablement Package erwartet (Herbst 2026) - neue SKU-Entscheidung + ggf. neue FOD-ISO",
+      "status": "beobachten",
+      "datumLabel": "Herbst 2026"
+    },
+    {
+      "datum": "2026-11-15",
+      "ereignis": "ADO Node-16-Task-Runner-Removal - self-hosted Agent aktuell halten",
+      "status": "beobachten",
+      "datumLabel": "Nov 2026"
+    },
+    {
+      "datum": "2026-11-10",
+      "ereignis": ".NET 9 EOL - fuer das Image irrelevant (Runtime 17.07. entfernt, nur noch dotnet-10 LTS)",
+      "status": "erledigt"
+    },
+    {
+      "datum": "2027-07-01",
+      "ereignis": "WIF-Issuer vstoken.dev.azure.com EOL - Bestands-SC bereits migriert; nur bei NEUEN Service Connections relevant",
+      "status": "erledigt, Guard bei Neuanlage"
+    },
+    {
+      "datum": "2027-07-19",
+      "ereignis": "AADKERB-keyCredential laeuft ab (avdamsfslogix01) - Kerberos-Key-Rotation noetig; SAP-Konto (avdsapfslogix02) hat eigenes, spaeteres Datum",
+      "status": "Frist, per Graph pruefbar"
+    },
+    {
+      "datum": "2028-03-31",
+      "ereignis": "DSC-Extension-Retirement - Migration auf Azure Machine Configuration noetig",
+      "status": "beobachten"
+    }
+  ],
+  "hinweise": [
+    "0 passwordCredentials an AADKERB-Apps ist GESUND (keyCredentials tragen) - kein Credential-Alarm aus leerer Password-Sicht ableiten",
+    "putty.portable bewusst als Direktpaket statt Meta-Paket (Upstream-Flip-Gefahr) - Paket-ID nicht korrigieren",
+    "Scaling-Plan-RBAC auf RG-Scope, kein Private Endpoint (E9), Pool Open access: dokumentierte Trade-offs mit Neubewertungs-Triggern in production-readiness.md",
+    "Laufzeit-Istwerte stehen nicht im Repo: aktive Slot-Version liefert der Rotation-State (Blob), reale Image-Versionen die Gallery, den aufgeloesten Basisimage-Stand das Build-Manifest (SourceImage, commit=, run=)"
+  ]
+}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AVD Komponenten - Version Tracker</title>
+    <title>AVD Versionsinventar - Version Tracker</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
     <link rel="stylesheet" href="/styles/shared.css">
     <script src="/scripts/theme-init.js"></script>
@@ -16,7 +16,7 @@
             <div class="nav-links">
                 <a href="/">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
-                <a href="/avd.html" class="active">AVD Komponenten</a>
+                <a href="/avd.html" class="active">AVD Inventar</a>
                 <button id="themeToggle" class="btn btn-secondary">Theme</button>
             </div>
         </div>
@@ -25,8 +25,8 @@
     <main class="container">
         <div class="page-header flex justify-between items-center">
             <div>
-                <h1 class="page-title">AVD Komponenten</h1>
-                <p class="page-subtitle">Azure Virtual Desktop - Version Tracker</p>
+                <h1 class="page-title">AVD Versionsinventar</h1>
+                <p class="page-subtitle">Alle versionsprüfbaren Artefakte der vier Repos (Core, Packer, AMS, SAP)</p>
             </div>
             <div class="flex items-center gap-1">
                 <span class="text-muted text-small" id="lastUpdated"></span>
@@ -37,11 +37,23 @@
         <div class="stats">
             <div class="stat">
                 <div class="stat-value text-success" id="currentCount">-</div>
-                <div class="stat-label">Auto-gepr.</div>
+                <div class="stat-label">Aktuell</div>
             </div>
             <div class="stat">
-                <div class="stat-value text-warning" id="manualCount">-</div>
-                <div class="stat-label">Manuell</div>
+                <div class="stat-value text-warning" id="outdatedCount">-</div>
+                <div class="stat-label">Veraltet</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="floatingCount">-</div>
+                <div class="stat-label">Floating</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="manualCount">-</div>
+                <div class="stat-label">Manuell/Azure</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="internCount">-</div>
+                <div class="stat-label">Intern</div>
             </div>
             <div class="stat">
                 <div class="stat-value text-danger" id="errorCount">-</div>
@@ -52,6 +64,10 @@
         <div id="categoryGroups">
             <div class="loading"><div class="spinner"></div> Laden...</div>
         </div>
+
+        <div id="termineSection"></div>
+        <div id="kontrakteSection"></div>
+        <div id="hinweiseSection"></div>
     </main>
 
     <script src="/scripts/shared.js"></script>

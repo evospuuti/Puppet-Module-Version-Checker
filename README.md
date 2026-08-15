@@ -4,8 +4,13 @@ Kleines Dashboard, das getrackte Versionen gegen ihre Upstream-Quellen prüft:
 
 - **Puppet Module** gegen die [Puppet Forge API](https://forgeapi.puppet.com)
 - **GitHub Releases** (z.B. Puppetboard) gegen die GitHub Releases API
-- **AVD-Komponenten** (Azure Virtual Desktop) gegen GitHub Releases und die
-  Terraform Registry; Komponenten ohne API werden als "manuell" gelistet
+- **AVD-Versionsinventar**: alle versionsprüfbaren Artefakte der vier
+  AVD-Repos (Core, Packer, AMS, SAP) mit automatischen Latest-Checks gegen
+  ausschließlich öffentliche, auth-freie Quellen - GitHub Releases/Commits,
+  Terraform Registry, HashiCorp Checkpoint, Chocolatey, PowerShell Gallery
+  und die Chrome-Versionhistory. Quellen, die den Azure-Tenant oder
+  dev.azure.com erfordern würden, werden bewusst **nicht** abgefragt und
+  nur informativ gelistet.
 
 Backend: Flask (`server.py`), Frontend: statisches HTML/Vanilla-JS unter
 `public/`. Deployment läuft auf Vercel (`vercel.json`).
@@ -28,15 +33,25 @@ pytest tests/
 
 ## Versionen pflegen
 
-Alle getrackten Versionen leben in `versions.json`:
+**`versions.json`** (Puppet-Teil):
 
 - `puppet_modules`: Modulname → installierte Version
 - `github_releases`: `owner/repo` → getrackte Version
-- `avd_components`: Liste von Komponenten mit `check_type`:
-  - `github_release` / `terraform_registry`: neueste Version wird automatisch
-    abgerufen (`check_source` gibt Repo bzw. Provider an)
-  - `manual`: keine API verfügbar; `known_latest` von Hand pflegen und
-    `_meta.last_updated` aktualisieren
+
+**`avd_inventory.json`** (AVD-Teil, Datenmodell aus dem AVD-Versionsinventar):
+
+- `items`: ein Eintrag pro Artefakt. `art` steuert die Vergleichslogik
+  (`pin`/`lock` = exakter Vergleich, `constraint` = Range-Auswertung inkl.
+  `~>`-Operator, `floating` = nur Latest anzeigen, `intern` = reiner
+  Konsistenz-Hinweis). `quelle.typ` steuert den Poller:
+  - automatisch: `github-release`, `github-commit`, `tf-registry`,
+    `hashicorp-checkpoint`, `choco`, `psgallery`, `chrome-versionhistory`
+  - nicht abgefragt: `azure-cli` (bewusst kein Tenant-Zugriff), `ms-learn`,
+    `vendor-manuell`, `intern` - hier ggf. `known_latest` von Hand pflegen
+- `suppression` an einem Item macht aus "veraltet" ein neutrales
+  "Suppressed" mit Grund und Neubewertungs-Trigger
+- `kontrakte`, `termine`, `hinweise`: Cross-Repo-Konsistenzchecks,
+  Fristen-Timeline und dokumentierte bewusste Entscheidungen
 
 Optional: Mit der Umgebungsvariable `GITHUB_TOKEN` werden GitHub-Abfragen
 authentifiziert (höheres Rate-Limit).
@@ -46,7 +61,7 @@ authentifiziert (höheres Rate-Limit).
 | Endpoint | Beschreibung |
 |---|---|
 | `GET /api/modules` | Puppet Module + GitHub Releases mit Forge-/Release-Vergleich |
-| `GET /api/avd-components` | AVD-Komponenten mit neuester Version |
+| `GET /api/avd-components` | AVD-Inventar: geprüfte Items, Kontrakte, Termine, Hinweise |
 | `GET /api/system_status` | Zusammenfassung für das Dashboard |
 | `GET /api/versions` | Rohdaten aus `versions.json` |
 

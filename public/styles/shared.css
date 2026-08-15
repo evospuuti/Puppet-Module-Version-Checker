@@ -217,6 +217,61 @@ tr:hover {
     color: var(--danger);
 }
 
+.badge-neutral {
+    background: rgba(108, 117, 125, 0.12);
+    color: var(--text-muted);
+}
+
+.badge-info {
+    background: rgba(0, 123, 255, 0.1);
+    color: var(--primary);
+}
+
+/* Kleine Chips fuer Repo-Zugehoerigkeit und Pin-Art (AVD-Inventar) */
+.chip {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    white-space: nowrap;
+}
+
+/* Detailzeilen unter dem Artefakt-Namen */
+.item-details {
+    margin-top: 0.25rem;
+    line-height: 1.4;
+}
+
+.item-details .fundort,
+.fundort {
+    font-family: ui-monospace, monospace;
+    font-size: 0.7rem;
+    opacity: 0.85;
+    word-break: break-word;
+}
+
+.suppression-note {
+    color: var(--primary);
+}
+
+.hint-list {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.hint-list li {
+    margin: 0.4rem 0;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+td.nowrap {
+    white-space: nowrap;
+}
+
 /* Buttons */
 .btn {
     display: inline-flex;

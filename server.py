@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -98,10 +99,94 @@ def load_versions():
             return _versions_cache
     except FileNotFoundError:
         logger.warning("versions.json not found, using empty defaults")
-        return {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
+        return {"puppet_modules": {}, "github_releases": {}}
     except json.JSONDecodeError as e:
         logger.error("Error parsing versions.json: %s", e)
-        return {"puppet_modules": {}, "avd_components": [], "github_releases": {}}
+        return {"puppet_modules": {}, "github_releases": {}}
+
+
+_EMPTY_INVENTORY = {"_meta": {}, "kategorien": [], "items": [],
+                    "kontrakte": [], "termine": [], "hinweise": []}
+_inventory_cache = None
+
+
+def load_avd_inventory():
+    """Lädt das AVD-Versionsinventar aus avd_inventory.json (einmalig gecached)."""
+    global _inventory_cache
+    if _inventory_cache is not None:
+        return _inventory_cache
+
+    inventory_file = os.path.join(os.path.dirname(__file__), 'avd_inventory.json')
+    try:
+        with open(inventory_file, 'r') as f:
+            _inventory_cache = json.load(f)
+            return _inventory_cache
+    except FileNotFoundError:
+        logger.warning("avd_inventory.json not found, using empty defaults")
+        return dict(_EMPTY_INVENTORY)
+    except json.JSONDecodeError as e:
+        logger.error("Error parsing avd_inventory.json: %s", e)
+        return dict(_EMPTY_INVENTORY)
+
+# ============================================================================
+# VERSION COMPARISON & CONSTRAINT EVALUATION
+# ============================================================================
+
+_VERSION_RE = re.compile(r'\d+(?:\.\d+)*')
+_CLAUSE_RE = re.compile(r'^(~>|>=|<=|!=|>|<|=)?\s*(\d+(?:\.\d+)*)$')
+
+
+def _extract_version(text):
+    """Zieht die erste Versionsnummer (z.B. '4.81.0') aus einem Freitext."""
+    if not text:
+        return None
+    m = _VERSION_RE.search(str(text))
+    return m.group(0) if m else None
+
+
+def _compare_versions(a, b):
+    """Numerischer Segmentvergleich: -1/0/1 wie cmp(a, b)."""
+    ta = [int(p) for p in a.split('.')]
+    tb = [int(p) for p in b.split('.')]
+    length = max(len(ta), len(tb))
+    ta += [0] * (length - len(ta))
+    tb += [0] * (length - len(tb))
+    return (ta > tb) - (ta < tb)
+
+
+def _satisfies_constraint(version, constraint):
+    """Prüft eine Constraint-Liste wie '>= 1.14.0, != 1.15.0, < 2.0.0'.
+
+    Unterstützt >=, >, <=, <, !=, = und den pessimistischen Operator ~>
+    (Terraform/Ruby-Semantik). Gibt True/False zurück, oder None wenn die
+    Constraint nicht auswertbar ist.
+    """
+    for clause in constraint.split(','):
+        clause = clause.strip()
+        if not clause:
+            continue
+        m = _CLAUSE_RE.match(clause)
+        if not m:
+            return None
+        op = m.group(1) or '='
+        ref = m.group(2)
+        if op == '~>':
+            # ~> X.Y.Z bedeutet >= X.Y.Z und < X.(Y+1); ~> X.Y bedeutet < (X+1)
+            if _compare_versions(version, ref) < 0:
+                return False
+            upper = [int(p) for p in ref.split('.')][:-1]
+            if not upper:
+                return None
+            upper[-1] += 1
+            if _compare_versions(version, '.'.join(str(p) for p in upper)) >= 0:
+                return False
+        else:
+            cmp = _compare_versions(version, ref)
+            ok = {'=': cmp == 0, '!=': cmp != 0, '>': cmp > 0,
+                  '>=': cmp >= 0, '<': cmp < 0, '<=': cmp <= 0}[op]
+            if not ok:
+                return False
+    return True
 
 # ============================================================================
 # CONNECTION POOLING (autoresearch-inspired: reuse connections, reduce overhead)
@@ -234,75 +319,176 @@ def _fetch_single_github_release(repo_name, tracked_version):
     return release_data
 
 
-def _fetch_single_avd_component(component):
-    """Holt die neueste Version einer AVD-Komponente basierend auf check_type."""
+# Quelltypen, die ohne Auth automatisch pollbar sind
+_AUTO_SOURCE_TYPES = {'github-release', 'github-commit', 'tf-registry',
+                      'hashicorp-checkpoint', 'choco', 'psgallery',
+                      'chrome-versionhistory'}
+_ODATA_VERSION_RE = re.compile(r'<d:Version[^>]*>([^<]+)</d:Version>')
+
+
+def _fetch_latest_for_source(quelle):
+    """Holt die neueste Version für einen Quelltyp aus dem AVD-Inventar.
+
+    Gibt (latest, None) bei Erfolg zurück, sonst (None, fehlermeldung).
+    """
+    typ = quelle.get('typ', '')
+    ref = quelle.get('ref', '') or ''
+    session = _get_http_session()
+
+    if typ in ('github-release', 'github-commit'):
+        headers = {'Accept': 'application/vnd.github+json'}
+        gh_token = os.environ.get('GITHUB_TOKEN')
+        if gh_token:
+            headers['Authorization'] = f'token {gh_token}'
+
+        if typ == 'github-release':
+            url = f'https://api.github.com/repos/{ref}/releases/latest'
+            response = session.get(url, timeout=10, headers=headers)
+            if response.status_code == 200:
+                tag = response.json().get('tag_name', '')
+                if tag:
+                    return tag.lstrip('v'), None
+                return None, 'Kein tag_name in der Antwort'
+        else:
+            path = quelle.get('path', '')
+            url = (f'https://api.github.com/repos/{ref}/commits'
+                   f'?path={path}&per_page=1')
+            response = session.get(url, timeout=10, headers=headers)
+            if response.status_code == 200:
+                commits = response.json()
+                if commits and commits[0].get('sha'):
+                    return commits[0]['sha'][:8], None
+                return None, 'Keine Commits in der Antwort'
+
+    elif typ == 'tf-registry':
+        url = f'https://registry.terraform.io/v1/providers/{ref}'
+        response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
+        if response.status_code == 200:
+            version = response.json().get('version', '')
+            if version:
+                return version.lstrip('v'), None
+            return None, 'Keine version in der Antwort'
+
+    elif typ == 'hashicorp-checkpoint':
+        url = f'https://checkpoint-api.hashicorp.com/v1/check/{ref}'
+        response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
+        if response.status_code == 200:
+            version = response.json().get('current_version', '')
+            if version:
+                return version.lstrip('v'), None
+            return None, 'Keine current_version in der Antwort'
+
+    elif typ == 'choco':
+        url = ("https://community.chocolatey.org/api/v2/Packages()"
+               f"?$filter=Id%20eq%20%27{ref}%27%20and%20IsLatestVersion")
+        response = session.get(url, timeout=10)
+        if response.status_code == 200:
+            m = _ODATA_VERSION_RE.search(response.text)
+            if m:
+                return m.group(1).strip(), None
+            return None, 'Keine Version im OData-Feed'
+
+    elif typ == 'psgallery':
+        url = ("https://www.powershellgallery.com/api/v2/FindPackagesById()"
+               f"?id=%27{ref}%27&$filter=IsLatestVersion")
+        response = session.get(url, timeout=10)
+        if response.status_code == 200:
+            m = _ODATA_VERSION_RE.search(response.text)
+            if m:
+                return m.group(1).strip(), None
+            return None, 'Keine Version im OData-Feed'
+
+    elif typ == 'chrome-versionhistory':
+        url = ('https://versionhistory.googleapis.com/v1/chrome/platforms/'
+               'win64/channels/stable/versions?pageSize=1')
+        response = session.get(url, timeout=10)
+        if response.status_code == 200:
+            versions = response.json().get('versions', [])
+            if versions and versions[0].get('version'):
+                return versions[0]['version'], None
+            return None, 'Keine versions in der Antwort'
+
+    else:
+        return None, f'Unbekannter Quelltyp: {typ}'
+
+    logger.warning("API status %d for %s (%s)", response.status_code, ref, typ)
+    return None, f'HTTP {response.status_code}'
+
+
+def _check_inventory_item(item):
+    """Prüft einen Eintrag des AVD-Inventars gegen seine Latest-Quelle.
+
+    Status-Werte: current, outdated, suppressed, floating, manual, azure,
+    intern, error. `art` steuert die Vergleichslogik, `quelle.typ` den Poller.
+    """
+    quelle = item.get('quelle', {}) or {}
+    art = item.get('art', 'intern')
     result = {
-        'name': component['name'],
-        'category': component.get('category', ''),
-        'location': component.get('location', ''),
-        'tracked': component.get('tracked', ''),
-        'latestVersion': 'N/A',
-        'status': 'unknown',
-        'link': component.get('link', ''),
-        'note': component.get('note', ''),
-        'checkType': component.get('check_type', 'manual'),
+        'id': item.get('id', ''),
+        'kategorie': item.get('kategorie', ''),
+        'artefakt': item.get('artefakt', ''),
+        'repo': item.get('repo', []),
+        'ist': item.get('ist'),
+        'constraint': item.get('constraint'),
+        'art': art,
+        'artLabel': item.get('artLabel', ''),
+        'fundorte': item.get('fundorte', []),
+        'quelle': {'typ': quelle.get('typ', 'intern'), 'ref': quelle.get('ref')},
+        'link': item.get('link', ''),
+        'note': item.get('note', ''),
+        'suppression': item.get('suppression'),
+        'latest': item.get('known_latest', '-'),
+        'status': 'intern',
     }
 
-    check_type = component.get('check_type', 'manual')
+    typ = quelle.get('typ', 'intern')
 
-    if check_type == 'manual':
-        result['latestVersion'] = component.get('known_latest', '-')
+    if typ == 'intern' or art == 'intern':
+        result['status'] = 'intern'
+        return result
+    if typ == 'azure-cli':
+        result['status'] = 'azure'
+        return result
+    if typ not in _AUTO_SOURCE_TYPES:
         result['status'] = 'manual'
         return result
 
-    session = _get_http_session()
-
     try:
-        if check_type == 'github_release':
-            repo = component.get('check_source', '')
-            headers = {'Accept': 'application/vnd.github+json'}
-            gh_token = os.environ.get('GITHUB_TOKEN')
-            if gh_token:
-                headers['Authorization'] = f'token {gh_token}'
+        latest, error = _fetch_latest_for_source(quelle)
+        if error:
+            result['status'] = 'error'
+            result['error'] = error
+            return result
 
-            url = f'https://api.github.com/repos/{repo}/releases/latest'
-            response = session.get(url, timeout=10, headers=headers)
+        result['latest'] = latest
 
-            if response.status_code == 200:
-                data = response.json()
-                tag = data.get('tag_name', '')
-                if tag:
-                    result['latestVersion'] = tag.lstrip('v')
-                    # 'checked' = Abruf erfolgreich; die tracked-Angaben sind
-                    # Ranges (z.B. '~> 4.0'), ein exakter Vergleich ist hier
-                    # nicht möglich - der Abgleich bleibt Sache des Betrachters.
-                    result['status'] = 'checked'
+        if art in ('pin', 'lock'):
+            if typ == 'github-commit':
+                ist = (item.get('ist') or '').strip()
+                same = bool(ist) and (latest.startswith(ist) or ist.startswith(latest))
+                result['status'] = 'current' if same else 'outdated'
             else:
-                logger.warning("GitHub API status %d for %s", response.status_code, repo)
-                result['status'] = 'error'
-                result['error'] = f"HTTP {response.status_code}"
-
-        elif check_type == 'terraform_registry':
-            provider = component.get('check_source', '')
-            parts = provider.split('/')
-            if len(parts) != 2:
-                result['status'] = 'error'
-                result['error'] = f'Ungültiger Provider-Name: {provider}'
-                return result
-            namespace, name = parts
-
-            url = f'https://registry.terraform.io/v1/providers/{namespace}/{name}'
-            response = session.get(url, timeout=10, headers={'Accept': 'application/json'})
-
-            if response.status_code == 200:
-                data = response.json()
-                if 'version' in data:
-                    result['latestVersion'] = data['version'].lstrip('v')
-                    result['status'] = 'checked'
+                ist_v = _extract_version(item.get('ist'))
+                latest_v = _extract_version(latest)
+                if ist_v and latest_v:
+                    result['status'] = ('current'
+                                        if _compare_versions(ist_v, latest_v) >= 0
+                                        else 'outdated')
+                else:
+                    result['status'] = 'floating'
+        elif art == 'constraint' and item.get('constraint'):
+            latest_v = _extract_version(latest)
+            satisfied = (_satisfies_constraint(latest_v, item['constraint'])
+                         if latest_v else None)
+            if satisfied is None:
+                result['status'] = 'floating'
             else:
-                logger.warning("Registry API status %d for %s", response.status_code, provider)
-                result['status'] = 'error'
-                result['error'] = f"HTTP {response.status_code}"
+                result['status'] = 'current' if satisfied else 'outdated'
+        else:
+            result['status'] = 'floating'
+
+        if result['status'] == 'outdated' and item.get('suppression'):
+            result['status'] = 'suppressed'
 
     except requests.Timeout:
         result['status'] = 'error'
@@ -311,7 +497,7 @@ def _fetch_single_avd_component(component):
         result['status'] = 'error'
         result['error'] = 'Verbindungsfehler'
     except Exception:
-        logger.exception("Unexpected error for AVD component %s", component['name'])
+        logger.exception("Unexpected error for inventory item %s", item.get('id'))
         result['status'] = 'error'
         result['error'] = 'Unerwarteter Fehler'
 
@@ -337,8 +523,8 @@ def fetch_modules_data():
 
 
 def fetch_avd_data():
-    """Holt alle AVD-Komponenten Daten (über den fetch_all_data-Cache)."""
-    return fetch_all_data()['avd_components']
+    """Holt das geprüfte AVD-Inventar (über den fetch_all_data-Cache)."""
+    return fetch_all_data()['avd']
 
 # ============================================================================
 # COMBINED DATA FETCH (autoresearch-Pattern: prefetch/overlap I/O)
@@ -349,41 +535,50 @@ def fetch_avd_data():
 
 @cache.cached(timeout=300, key_prefix='all_data')
 def fetch_all_data():
-    """Holt Module UND AVD-Komponenten parallel in einem einzigen Aufruf.
+    """Holt Module UND das AVD-Inventar parallel in einem einzigen Aufruf.
 
     autoresearch-Pattern: Überlappung von I/O-Operationen.
-    Statt sequentiell modules, dann AVD-Komponenten zu laden, werden beide
+    Statt sequentiell modules, dann Inventar zu laden, wird alles
     gleichzeitig gestartet.
     """
     versions = load_versions()
+    inventory = load_avd_inventory()
     installed_modules = versions.get('puppet_modules', {})
-    avd_components = versions.get('avd_components', [])
     github_releases = versions.get('github_releases', {})
+    inventory_items = inventory.get('items', [])
 
     modules = []
-    avd_results = []
+    avd_results = {}
 
     all_futures = {
-        _executor.submit(_fetch_single_module, name, version): 'module'
+        _executor.submit(_fetch_single_module, name, version): ('module', None)
         for name, version in installed_modules.items()
     }
     all_futures.update({
-        _executor.submit(_fetch_single_github_release, name, version): 'module'
+        _executor.submit(_fetch_single_github_release, name, version): ('module', None)
         for name, version in github_releases.items()
     })
     all_futures.update({
-        _executor.submit(_fetch_single_avd_component, comp): 'avd'
-        for comp in avd_components
+        _executor.submit(_check_inventory_item, item): ('avd', idx)
+        for idx, item in enumerate(inventory_items)
     })
 
     for future in as_completed(all_futures):
-        result = future.result()
-        if all_futures[future] == 'module':
-            modules.append(result)
+        kind, idx = all_futures[future]
+        if kind == 'module':
+            modules.append(future.result())
         else:
-            avd_results.append(result)
+            avd_results[idx] = future.result()
 
-    return {'modules': modules, 'avd_components': avd_results}
+    avd = {
+        'items': [avd_results[i] for i in sorted(avd_results)],
+        'kategorien': inventory.get('kategorien', []),
+        'kontrakte': inventory.get('kontrakte', []),
+        'termine': inventory.get('termine', []),
+        'hinweise': inventory.get('hinweise', []),
+        'meta': inventory.get('_meta', {}),
+    }
+    return {'modules': modules, 'avd': avd}
 
 # ============================================================================
 # STATIC FILES ROUTES
@@ -465,7 +660,7 @@ def get_system_status():
     try:
         all_data = fetch_all_data()
         modules = all_data['modules']
-        avd_components = all_data['avd_components']
+        avd_items = all_data['avd']['items']
 
         # Puppet-Analyse
         outdated_count = 0
@@ -483,24 +678,30 @@ def get_system_status():
         else:
             puppet_status = {"status": "OK", "details": "Alle Module aktuell"}
 
-        # AVD-Analyse
+        # AVD-Analyse (Inventar-Statuswerte)
         avd_errors = 0
+        avd_outdated = 0
         avd_manual = 0
-        avd_ok = 0
-        for comp in avd_components:
-            if comp.get('status') == 'error':
+        avd_auto = 0
+        for comp in avd_items:
+            status = comp.get('status')
+            if status == 'error':
                 avd_errors += 1
-            elif comp.get('status') == 'manual':
+            elif status == 'outdated':
+                avd_outdated += 1
+            elif status in ('manual', 'azure'):
                 avd_manual += 1
-            else:
-                avd_ok += 1
+            elif status in ('current', 'floating', 'suppressed'):
+                avd_auto += 1
 
         if avd_errors > 0:
-            avd_status = {"status": "Warnung", "details": f"{avd_errors} Komponenten mit Fehlern"}
+            avd_status = {"status": "Warnung", "details": f"{avd_errors} Checks fehlgeschlagen"}
+        elif avd_outdated > 0:
+            avd_status = {"status": "Warnung", "details": f"{avd_outdated} Artefakte veraltet"}
         elif avd_manual > 0:
-            avd_status = {"status": "Info", "details": f"{avd_ok} auto-geprüft, {avd_manual} manuell"}
+            avd_status = {"status": "Info", "details": f"{avd_auto} auto-geprüft, {avd_manual} manuell/Azure"}
         else:
-            avd_status = {"status": "OK", "details": "Alle Komponenten geprüft"}
+            avd_status = {"status": "OK", "details": "Alle Artefakte geprüft"}
 
     except Exception:
         logger.exception("Error fetching system status")
