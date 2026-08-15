@@ -13,12 +13,18 @@ from flask_limiter.util import get_remote_address
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # ============================================================================
 # APP SETUP
 # ============================================================================
 
 app = Flask(__name__)
+
+# Hinter dem Vercel-Proxy steht die Client-IP in X-Forwarded-For. Ohne
+# ProxyFix sieht der Rate-Limiter nur die Proxy-IP und alle Nutzer teilen
+# sich ein gemeinsames Limit.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # CORS nur für eigene Origin erlauben (Vercel-Domain + lokale Entwicklung)
 CORS(app, origins=[
@@ -267,7 +273,10 @@ def _fetch_single_avd_component(component):
                 tag = data.get('tag_name', '')
                 if tag:
                     result['latestVersion'] = tag.lstrip('v')
-                    result['status'] = 'current'
+                    # 'checked' = Abruf erfolgreich; die tracked-Angaben sind
+                    # Ranges (z.B. '~> 4.0'), ein exakter Vergleich ist hier
+                    # nicht möglich - der Abgleich bleibt Sache des Betrachters.
+                    result['status'] = 'checked'
             else:
                 logger.warning("GitHub API status %d for %s", response.status_code, repo)
                 result['status'] = 'error'
@@ -289,7 +298,7 @@ def _fetch_single_avd_component(component):
                 data = response.json()
                 if 'version' in data:
                     result['latestVersion'] = data['version'].lstrip('v')
-                    result['status'] = 'current'
+                    result['status'] = 'checked'
             else:
                 logger.warning("Registry API status %d for %s", response.status_code, provider)
                 result['status'] = 'error'
@@ -322,39 +331,21 @@ _MAX_WORKERS = 20
 # Connection Pooling wirkungslos machen.
 _executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS)
 
-@cache.cached(timeout=300, key_prefix='puppet_modules_data')
 def fetch_modules_data():
-    """Holt alle Puppet Module + GitHub Release Daten parallel (mit Cache)."""
-    versions = load_versions()
-    installed_modules = versions.get('puppet_modules', {})
-    github_releases = versions.get('github_releases', {})
-
-    futures = {
-        _executor.submit(_fetch_single_module, name, version): name
-        for name, version in installed_modules.items()
-    }
-    futures.update({
-        _executor.submit(_fetch_single_github_release, name, version): name
-        for name, version in github_releases.items()
-    })
-    return [future.result() for future in as_completed(futures)]
+    """Holt alle Puppet Module + GitHub Release Daten (über den fetch_all_data-Cache)."""
+    return fetch_all_data()['modules']
 
 
-@cache.cached(timeout=300, key_prefix='avd_components_data')
 def fetch_avd_data():
-    """Holt alle AVD-Komponenten Daten parallel (mit Cache)."""
-    versions = load_versions()
-    avd_components = versions.get('avd_components', [])
-
-    futures = {
-        _executor.submit(_fetch_single_avd_component, comp): comp['name']
-        for comp in avd_components
-    }
-    return [future.result() for future in as_completed(futures)]
+    """Holt alle AVD-Komponenten Daten (über den fetch_all_data-Cache)."""
+    return fetch_all_data()['avd_components']
 
 # ============================================================================
 # COMBINED DATA FETCH (autoresearch-Pattern: prefetch/overlap I/O)
 # ============================================================================
+# Einziger gecachter Fetch: /api/modules, /api/avd-components und
+# /api/system_status teilen sich denselben Cache-Eintrag, statt dieselben
+# Upstream-APIs mehrfach abzufragen.
 
 @cache.cached(timeout=300, key_prefix='all_data')
 def fetch_all_data():

@@ -9,12 +9,16 @@ function toggleNav() {
     document.querySelector('.nav-links').classList.toggle('open');
 }
 
-// HTML Escaping (XSS-Schutz)
+// HTML Escaping (XSS-Schutz) - escapt auch Quotes, damit die Funktion
+// sicher in Attributwerten (z.B. href="...") verwendet werden kann
 function escapeHtml(str) {
     if (str == null) return '';
-    var div = document.createElement('div');
-    div.textContent = String(str);
-    return div.innerHTML;
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Bessere Fehlermeldung für bekannte HTTP-Status

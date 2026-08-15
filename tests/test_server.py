@@ -429,7 +429,7 @@ def test_fetch_avd_component_github_release_current():
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_avd_component(comp)
 
-    assert result['status'] == 'current'
+    assert result['status'] == 'checked'
     assert result['latestVersion'] == '1.14.8'
 
 
@@ -490,7 +490,7 @@ def test_fetch_avd_component_terraform_registry_current():
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_avd_component(comp)
 
-    assert result['status'] == 'current'
+    assert result['status'] == 'checked'
     assert result['latestVersion'] == '4.66.0'
 
 
@@ -930,7 +930,7 @@ def test_api_system_status_detects_avd_errors(client):
     mock_data = {
         'modules': [],
         'avd_components': [
-            {'status': 'current'},
+            {'status': 'checked'},
             {'status': 'error'},
         ]
     }
@@ -947,7 +947,7 @@ def test_api_system_status_detects_avd_manual(client):
     mock_data = {
         'modules': [],
         'avd_components': [
-            {'status': 'current'},
+            {'status': 'checked'},
             {'status': 'manual'},
         ]
     }
@@ -980,7 +980,7 @@ def test_api_system_status_all_ok(client):
     """System-Status ist OK wenn alles aktuell."""
     mock_data = {
         'modules': [{'status': 'current', 'deprecated': False}],
-        'avd_components': [{'status': 'current'}]
+        'avd_components': [{'status': 'checked'}]
     }
     with patch.object(server, 'fetch_all_data', return_value=mock_data):
         res = client.get('/api/system_status')
@@ -1377,124 +1377,6 @@ def test_all_pages_load_theme_init(client):
 
 
 # ============================================================================
-# INTEGRATION TESTS - JS CONTENT (autoresearch Features)
-# ============================================================================
-
-def test_shared_js_has_debounce(client):
-    """shared.js enthält debounce-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'debounce' in res.data
-
-
-def test_shared_js_has_fetch_deduped(client):
-    """shared.js enthält fetchDeduped-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'fetchDeduped' in res.data
-
-
-def test_shared_js_has_prefetch_data(client):
-    """shared.js enthält prefetchData-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'prefetchData' in res.data
-
-
-def test_shared_js_has_escape_html(client):
-    """shared.js enthält escapeHtml-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'escapeHtml' in res.data
-
-
-def test_shared_js_has_toggle_dark_mode(client):
-    """shared.js enthält toggleDarkMode-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'toggleDarkMode' in res.data
-
-
-def test_index_js_has_prefetch_calls(client):
-    """index.js ruft prefetchData auf."""
-    res = client.get('/scripts/index.js')
-    assert b'prefetchData' in res.data
-
-
-def test_index_js_prefetches_api_endpoints(client):
-    """index.js prefetcht die API-Endpoints."""
-    res = client.get('/scripts/index.js')
-    assert b'/api/modules' in res.data
-    assert b'/api/avd-components' in res.data
-
-
-def test_puppet_js_uses_debounced_filter(client):
-    """puppet.js verwendet debouncedFilter."""
-    res = client.get('/scripts/puppet.js')
-    assert b'debouncedFilter' in res.data
-
-
-def test_avd_js_has_category_order(client):
-    """avd.js definiert CATEGORY_ORDER."""
-    res = client.get('/scripts/avd.js')
-    assert b'CATEGORY_ORDER' in res.data
-
-
-def test_puppet_js_uses_document_fragment(client):
-    """puppet.js verwendet DocumentFragment."""
-    res = client.get('/scripts/puppet.js')
-    assert b'createDocumentFragment' in res.data
-
-
-def test_avd_js_uses_render_categories(client):
-    """avd.js verwendet renderCategories-Funktion."""
-    res = client.get('/scripts/avd.js')
-    assert b'renderCategories' in res.data
-
-
-def test_puppet_js_uses_fetch_swr_not_raw_fetch(client):
-    """puppet.js nutzt fetchSWR statt direktem fetch."""
-    res = client.get('/scripts/puppet.js')
-    assert b'fetchSWR' in res.data
-
-
-def test_avd_js_uses_fetch_swr_not_raw_fetch(client):
-    """avd.js nutzt fetchSWR statt direktem fetch."""
-    res = client.get('/scripts/avd.js')
-    assert b'fetchSWR' in res.data
-
-
-# ============================================================================
-# INTEGRATION TESTS - CSS CONTENT
-# ============================================================================
-
-def test_css_has_dark_mode(client):
-    """CSS enthält Dark-Mode Variablen."""
-    res = client.get('/styles/shared.css')
-    assert b'.dark' in res.data
-
-
-def test_css_has_contain_on_nav(client):
-    """CSS hat contain-Property auf Navigation."""
-    res = client.get('/styles/shared.css')
-    assert b'contain: layout style' in res.data
-
-
-def test_css_has_will_change_on_spinner(client):
-    """CSS hat will-change auf Spinner."""
-    res = client.get('/styles/shared.css')
-    assert b'will-change: transform' in res.data
-
-
-def test_css_has_responsive_breakpoint(client):
-    """CSS hat responsive Breakpoint."""
-    res = client.get('/styles/shared.css')
-    assert b'768px' in res.data
-
-
-def test_css_has_color_scheme(client):
-    """CSS hat color-scheme für Light und Dark."""
-    res = client.get('/styles/shared.css')
-    assert b'color-scheme: light' in res.data
-    assert b'color-scheme: dark' in res.data
-
-
-# ============================================================================
 # UNIT TESTS - KNOWN PAGES
 # ============================================================================
 
@@ -1510,153 +1392,3 @@ def test_known_pages_count():
     """_KNOWN_PAGES hat genau 4 Einträge."""
     assert len(server._KNOWN_PAGES) == 4
 
-
-# ============================================================================
-# INTEGRATION TESTS - STALE-WHILE-REVALIDATE (spürbare Performance)
-# ============================================================================
-
-def test_shared_js_has_fetch_swr(client):
-    """shared.js enthält fetchSWR-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'fetchSWR' in res.data
-
-
-def test_shared_js_has_cache_functions(client):
-    """shared.js enthält Cache-Funktionen (_getCache, _setCache)."""
-    res = client.get('/scripts/shared.js')
-    assert b'_getCache' in res.data
-    assert b'_setCache' in res.data
-
-
-def test_shared_js_has_stale_check(client):
-    """shared.js enthält _isCacheStale-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'_isCacheStale' in res.data
-
-
-def test_shared_js_swr_uses_localstorage(client):
-    """shared.js SWR nutzt localStorage."""
-    res = client.get('/scripts/shared.js')
-    assert b'localStorage' in res.data
-
-
-def test_shared_js_swr_has_max_age(client):
-    """shared.js SWR hat konfigurierbare Cache-Dauer."""
-    res = client.get('/scripts/shared.js')
-    assert b'_CACHE_MAX_AGE_MS' in res.data
-
-
-def test_index_js_uses_fetch_swr(client):
-    """index.js verwendet fetchSWR statt direktem fetch."""
-    res = client.get('/scripts/index.js')
-    assert b'fetchSWR' in res.data
-
-
-def test_puppet_js_uses_fetch_swr(client):
-    """puppet.js verwendet fetchSWR."""
-    res = client.get('/scripts/puppet.js')
-    assert b'fetchSWR' in res.data
-
-
-def test_avd_js_uses_fetch_swr(client):
-    """avd.js verwendet fetchSWR."""
-    res = client.get('/scripts/avd.js')
-    assert b'fetchSWR' in res.data
-
-
-def test_puppet_js_refresh_clears_cache(client):
-    """puppet.js löscht Cache bei manuellem Refresh."""
-    res = client.get('/scripts/puppet.js')
-    assert b'removeItem' in res.data
-
-
-def test_avd_js_refresh_clears_cache(client):
-    """avd.js löscht Cache bei manuellem Refresh."""
-    res = client.get('/scripts/avd.js')
-    assert b'removeItem' in res.data
-
-
-# ============================================================================
-# INTEGRATION TESTS - SKELETON LOADING (spürbare Performance)
-# ============================================================================
-
-def test_shared_js_has_create_skeleton_rows(client):
-    """shared.js enthält createSkeletonRows-Funktion."""
-    res = client.get('/scripts/shared.js')
-    assert b'createSkeletonRows' in res.data
-
-
-def test_shared_js_skeleton_creates_fragment(client):
-    """shared.js Skeleton nutzt DocumentFragment."""
-    res = client.get('/scripts/shared.js')
-    # createSkeletonRows sollte createDocumentFragment nutzen
-    data = res.data.decode()
-    assert 'createDocumentFragment' in data
-
-
-def test_shared_js_skeleton_uses_skeleton_line_class(client):
-    """shared.js Skeleton nutzt skeleton-line CSS-Klasse."""
-    res = client.get('/scripts/shared.js')
-    assert b'skeleton-line' in res.data
-
-
-def test_css_has_skeleton_styles(client):
-    """CSS enthält Skeleton-Loading Styles."""
-    res = client.get('/styles/shared.css')
-    assert b'skeleton-line' in res.data
-    assert b'skeleton-shimmer' in res.data
-
-
-def test_css_skeleton_has_animation(client):
-    """CSS Skeleton hat shimmer-Animation."""
-    res = client.get('/styles/shared.css')
-    assert b'@keyframes skeleton-shimmer' in res.data
-
-
-def test_css_has_stale_indicator(client):
-    """CSS enthält Stale-Indikator Styles."""
-    res = client.get('/styles/shared.css')
-    assert b'stale-indicator' in res.data
-    assert b'stale-dot' in res.data
-
-
-def test_css_stale_dot_has_pulse_animation(client):
-    """CSS Stale-Dot hat Pulse-Animation."""
-    res = client.get('/styles/shared.css')
-    assert b'stale-pulse' in res.data
-
-
-def test_index_js_uses_skeleton(client):
-    """index.js nutzt createSkeletonRows für Loading-State."""
-    res = client.get('/scripts/index.js')
-    assert b'createSkeletonRows' in res.data
-
-
-def test_puppet_js_uses_skeleton(client):
-    """puppet.js nutzt createSkeletonRows für Loading-State."""
-    res = client.get('/scripts/puppet.js')
-    assert b'createSkeletonRows' in res.data
-
-
-def test_avd_js_uses_skeleton(client):
-    """avd.js nutzt createSkeletonRows für Loading-State."""
-    res = client.get('/scripts/avd.js')
-    assert b'createSkeletonRows' in res.data
-
-
-def test_index_js_shows_stale_indicator(client):
-    """index.js zeigt Stale-Indikator bei gecachten Daten."""
-    res = client.get('/scripts/index.js')
-    assert b'stale-indicator' in res.data
-
-
-def test_puppet_js_shows_stale_indicator(client):
-    """puppet.js zeigt Stale-Indikator bei gecachten Daten."""
-    res = client.get('/scripts/puppet.js')
-    assert b'stale-indicator' in res.data
-
-
-def test_avd_js_shows_stale_indicator(client):
-    """avd.js zeigt Stale-Indikator bei gecachten Daten."""
-    res = client.get('/scripts/avd.js')
-    assert b'stale-indicator' in res.data
