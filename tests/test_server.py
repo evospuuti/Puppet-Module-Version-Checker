@@ -133,11 +133,105 @@ def test_load_versions_contains_puppet_modules():
 
 
 def test_load_versions_puppet_modules_have_versions():
-    """Alle Puppet Module haben eine Versionsangabe."""
+    """Alle Puppet Module haben eine Versionsangabe (String oder Objekt)."""
     result = server.load_versions()
-    for name, version in result.get('puppet_modules', {}).items():
-        assert isinstance(version, str), f"{name} hat keine String-Version"
-        assert len(version) > 0, f"{name} hat leere Version"
+    for name, entry in result.get('puppet_modules', {}).items():
+        installed, _c, _by, _n = server._normalize_module_entry(entry)
+        assert isinstance(installed, str), f"{name} hat keine String-Version"
+        assert len(installed) > 0, f"{name} hat leere Version"
+
+
+def test_load_versions_constrained_modules_are_wellformed():
+    """Gedeckelte Module tragen constraint und constrained_by."""
+    result = server.load_versions()
+    for name, entry in result.get('puppet_modules', {}).items():
+        if not isinstance(entry, dict):
+            continue
+        assert entry.get('constraint'), f"{name}: Objekt ohne constraint"
+        assert entry.get('constrained_by'), f"{name}: Objekt ohne constrained_by"
+        assert isinstance(entry['constrained_by'], list)
+
+
+# ============================================================================
+# UNIT TESTS - Constraint-Deckelung von Puppet-Modulen
+# ============================================================================
+
+def test_normalize_module_entry_string():
+    """Ein String-Eintrag ergibt Version ohne Constraint."""
+    assert server._normalize_module_entry('9.7.0') == ('9.7.0', None, [], '')
+
+
+def test_normalize_module_entry_object():
+    """Ein Objekt-Eintrag liefert alle Felder."""
+    entry = {'installed': '9.7.0', 'constraint': '< 10.0.0',
+             'constrained_by': ['puppet-archive 8.1.0'], 'note': 'n'}
+    assert server._normalize_module_entry(entry) == (
+        '9.7.0', '< 10.0.0', ['puppet-archive 8.1.0'], 'n')
+
+
+def test_forge_version_is_capped():
+    """Verletzt die neueste Forge-Version die Constraint, ist sie gedeckelt."""
+    assert server._forge_version_is_capped('10.0.2', '< 10.0.0') is True
+    assert server._forge_version_is_capped('9.7.0', '< 10.0.0') is False
+    assert server._forge_version_is_capped('2.0.1', '< 2.0.0') is True
+
+
+def test_forge_version_is_capped_unparseable():
+    """Nicht auswertbare Angaben gelten nicht als gedeckelt."""
+    assert server._forge_version_is_capped('', '< 10.0.0') is False
+    assert server._forge_version_is_capped('1.0.0', 'irgendwas') is False
+
+
+def test_fetch_module_capped_status():
+    """Neuere Forge-Version ausserhalb der Constraint -> capped statt outdated."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        'current_release': {'version': '10.0.2'}, 'deprecated_at': None
+    }
+    entry = {'installed': '9.7.0', 'constraint': '< 10.0.0',
+             'constrained_by': ['puppet-systemd 10.0.0'], 'note': 'kein Pfad'}
+
+    with patch.object(server.requests.Session, 'get', return_value=mock_response):
+        result = server._fetch_single_module('puppetlabs-stdlib', entry)
+
+    assert result['status'] == 'capped'
+    assert result['serverVersion'] == '9.7.0'
+    assert result['forgeVersion'] == '10.0.2'
+    assert result['constraint'] == '< 10.0.0'
+    assert result['constrainedBy'] == ['puppet-systemd 10.0.0']
+    assert result['note'] == 'kein Pfad'
+
+
+def test_fetch_module_outdated_within_constraint():
+    """Neuere Version innerhalb der Constraint bleibt ein echtes Update."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        'current_release': {'version': '9.8.0'}, 'deprecated_at': None
+    }
+    entry = {'installed': '9.7.0', 'constraint': '< 10.0.0',
+             'constrained_by': ['puppet-systemd 10.0.0']}
+
+    with patch.object(server.requests.Session, 'get', return_value=mock_response):
+        result = server._fetch_single_module('puppetlabs-stdlib', entry)
+
+    assert result['status'] == 'outdated'
+
+
+def test_fetch_module_string_entry_has_no_constraint():
+    """String-Eintraege verhalten sich unveraendert."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        'current_release': {'version': '10.0.0'}, 'deprecated_at': None
+    }
+    with patch.object(server.requests.Session, 'get', return_value=mock_response):
+        result = server._fetch_single_module('puppet-systemd', '9.4.0')
+
+    assert result['status'] == 'outdated'
+    assert result['constraint'] is None
+    assert result['constrainedBy'] == []
 
 
 def test_load_avd_inventory_returns_dict():

@@ -10,16 +10,32 @@
     "puppetlabs-facts": "1.7.0",
     "puppetlabs-inifile": "6.4.1",
     "puppetlabs-powershell": "6.1.0",
-    "puppetlabs-pwshlib": "1.2.3",
+    "puppetlabs-pwshlib": {
+      "installed": "1.2.3",
+      "constraint": "< 2.0.0",
+      "constrained_by": [
+        "dsc-auditpolicydsc 1.4.0-0-9 (>= 0.9.0 < 2.0.0)"
+      ],
+      "note": "1.2.3 ist die hoechste 1.x. dsc-auditpolicydsc ist selbst bereits auf seiner neuesten Version."
+    },
     "puppetlabs-registry": "5.0.3",
-    "puppetlabs-stdlib": "9.7.0",
+    "puppetlabs-stdlib": {
+      "installed": "9.7.0",
+      "constraint": "< 10.0.0",
+      "constrained_by": [
+        "puppet-archive 8.1.0 (>= 4.18.0 < 10.0.0)",
+        "puppet-ca_cert 4.0.0 (>= 9.0.0 < 10.0.0)",
+        "puppet-systemd 10.0.0 (>= 9.0.0 < 10.0.0)"
+      ],
+      "note": "9.7.0 ist die hoechste 9.x. Alle drei deckelnden Module sind selbst bereits auf ihrer neuesten Version - es gibt keinen Upgrade-Pfad."
+    },
     "saz-sudo": "9.0.2"
   },
   "github_releases": {
-    "voxpupuli/puppetboard": "7.0.1"
+    "voxpupuli/puppetboard": "7.0.2"
   },
   "_meta": {
     "last_updated": "2026-08-18",
-    "description": "Tracked versions for Puppet Forge and GitHub Releases; AVD-Inventar lebt in avd_inventory.json"
+    "description": "Tracked versions for Puppet Forge and GitHub Releases; AVD-Inventar lebt in avd_inventory.json. Module koennen statt einer Versions-Zeichenkette ein Objekt mit installed/constraint/constrained_by/note tragen, wenn ein anderes Modul sie deckelt."
   }
 }
