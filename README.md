@@ -35,7 +35,23 @@ pytest tests/
 
 **`versions.json`** (Puppet-Teil):
 
-- `puppet_modules`: Modulname → installierte Version
+- `puppet_modules`: Modulname → installierte Version. Statt einer
+  Zeichenkette kann ein Objekt stehen, wenn ein anderes Modul die
+  Version deckelt:
+
+  ```json
+  "puppetlabs-stdlib": {
+    "installed": "9.7.0",
+    "constraint": "< 10.0.0",
+    "constrained_by": ["puppet-systemd 10.0.0 (>= 9.0.0 < 10.0.0)"],
+    "note": "Kein Upgrade-Pfad - das deckelnde Modul ist selbst aktuell."
+  }
+  ```
+
+  Verletzt die neueste Forge-Version die `constraint`, meldet das
+  Dashboard den Status **„Gedeckelt"** statt „Update" und zeigt an, wer
+  deckelt. Damit bleiben dauerhaft nicht behebbare Zeilen von den echten
+  offenen Updates unterscheidbar.
 - `github_releases`: `owner/repo` → getrackte Version
 
 **`avd_inventory.json`** (AVD-Teil, Datenmodell aus dem AVD-Versionsinventar):

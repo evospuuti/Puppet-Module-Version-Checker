@@ -197,6 +197,18 @@ def _satisfies_constraint(version, constraint):
                 return False
     return True
 
+
+def _forge_version_is_capped(forge_version, constraint):
+    """True, wenn die neueste Forge-Version die hinterlegte Constraint verletzt.
+
+    Dann existiert kein Upgrade-Pfad - das Modul ist durch ein anderes
+    Modul gedeckelt und nicht einfach nur veraltet.
+    """
+    version = _extract_version(forge_version)
+    if not version:
+        return False
+    return _satisfies_constraint(version, constraint) is False
+
 # ============================================================================
 # CONNECTION POOLING (autoresearch-inspired: reuse connections, reduce overhead)
 # ============================================================================
@@ -238,14 +250,37 @@ def _get_http_session():
 # EINZELNE MODULE/PROVIDER ABRUFEN (für parallele Ausführung)
 # ============================================================================
 
-def _fetch_single_module(module_name, installed_version):
-    """Holt Daten für ein einzelnes Puppet-Modul vom Forge."""
+def _normalize_module_entry(entry):
+    """Erlaubt in versions.json je Modul einen String oder ein Objekt.
+
+    String:  "9.7.0"
+    Objekt:  {"installed": "9.7.0", "constraint": "< 10.0.0",
+              "constrained_by": ["puppet-archive 8.1.0"], "note": "..."}
+    """
+    if isinstance(entry, dict):
+        return (entry.get('installed', ''), entry.get('constraint'),
+                entry.get('constrained_by', []), entry.get('note', ''))
+    return entry, None, [], ''
+
+
+def _fetch_single_module(module_name, entry):
+    """Holt Daten für ein einzelnes Puppet-Modul vom Forge.
+
+    Ist für das Modul eine Constraint hinterlegt (weil ein anderes Modul es
+    deckelt), wird eine neuere Forge-Version nicht als 'outdated', sondern
+    als 'capped' gemeldet - es gibt dann schlicht keinen Upgrade-Pfad.
+    """
+    installed_version, constraint, constrained_by, note = _normalize_module_entry(entry)
+
     module_data = {
         'name': module_name,
         'serverVersion': installed_version,
         'forgeVersion': 'N/A',
         'status': 'unknown',
         'deprecated': False,
+        'constraint': constraint,
+        'constrainedBy': constrained_by,
+        'note': note,
         'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/", 1)}'
     }
 
@@ -260,7 +295,12 @@ def _fetch_single_module(module_name, installed_version):
             if 'current_release' in data and 'version' in data['current_release']:
                 forge_version = data['current_release']['version']
                 module_data['forgeVersion'] = forge_version
-                module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
+                if installed_version == forge_version:
+                    module_data['status'] = 'current'
+                elif constraint and _forge_version_is_capped(forge_version, constraint):
+                    module_data['status'] = 'capped'
+                else:
+                    module_data['status'] = 'outdated'
 
             module_data['deprecated'] = data.get('deprecated_at') is not None
         else:
