@@ -32,6 +32,28 @@
     box-sizing: border-box;
 }
 
+/* Sichtbarer Tastatur-Fokus, ohne Maus-Klicks zu umranden */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Skip-Link: nur bei Tastatur-Fokus sichtbar */
+.skip-link {
+    position: absolute;
+    top: 0;
+    left: -999px;
+    z-index: 200;
+    padding: 0.5rem 1rem;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 0 0 6px 0;
+}
+
+.skip-link:focus {
+    left: 0;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
@@ -90,7 +112,8 @@ body {
 }
 
 .nav-links a:hover,
-.nav-links a.active {
+.nav-links a.active,
+.nav-links a[aria-current="page"] {
     color: var(--primary);
 }
 
@@ -103,6 +126,11 @@ body {
 
 .page-header {
     margin-bottom: 2rem;
+}
+
+.page-header.flex {
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .page-title {
@@ -142,12 +170,14 @@ body {
     color: inherit;
 }
 
-/* Table - autoresearch-Pattern: contain für Reflow-Isolation */
+/* Table - contain für Reflow-Isolation; overflow-x: auto statt hidden,
+   damit breite Tabellen (AVD: 7 Spalten) auf Mobile scrollbar bleiben */
 .table-container {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     contain: layout style;
 }
 
@@ -188,7 +218,7 @@ tr:last-child td {
     border-bottom: none;
 }
 
-tr:hover {
+tbody tr:hover {
     background: var(--bg-secondary);
 }
 
@@ -295,6 +325,11 @@ td.nowrap {
     opacity: 0.9;
 }
 
+.btn[disabled] {
+    opacity: 0.6;
+    cursor: progress;
+}
+
 .btn-secondary {
     background: var(--bg-secondary);
     color: var(--text);
@@ -330,6 +365,7 @@ td.nowrap {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    overflow-wrap: anywhere; /* "Manuell/Azure" darf auf Mobile umbrechen */
 }
 
 /* Filter */
@@ -416,7 +452,9 @@ a:hover {
         width: 100%;
         text-align: left;
     }
-    .stats { grid-template-columns: repeat(3, 1fr); }
+    /* minmax(0, 1fr) statt 1fr: Spalten dürfen schmaler als ihr
+       min-content werden, sonst sprengt ein langes Label den Viewport */
+    .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* Skeleton Loading */
@@ -431,6 +469,11 @@ a:hover {
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.5s ease-in-out infinite;
 }
+
+.skeleton-w1 { width: 40%; }
+.skeleton-w2 { width: 55%; }
+.skeleton-w3 { width: 70%; }
+.skeleton-w4 { width: 85%; }
 
 @keyframes skeleton-shimmer {
     0% { background-position: 200% 0; }
@@ -458,6 +501,18 @@ a:hover {
 @keyframes stale-pulse {
     0%, 100% { opacity: 0.4; }
     50% { opacity: 1; }
+}
+
+/* Reduzierte Bewegung: Shimmer/Spinner/Pulse abschalten */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+    .skeleton-line { background: var(--border); }
 }
 
 /* Utilities */

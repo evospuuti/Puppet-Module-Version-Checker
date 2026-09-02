@@ -1,12 +1,16 @@
 // Dark Mode Toggle
 function toggleDarkMode() {
-    document.documentElement.classList.toggle('dark');
-    localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    var root = document.documentElement;
+    var dark = root.classList.toggle('dark');
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
 }
 
 // Mobile Navigation Toggle
 function toggleNav() {
-    document.querySelector('.nav-links').classList.toggle('open');
+    var links = document.getElementById('navLinks') || document.querySelector('.nav-links');
+    var open = links.classList.toggle('open');
+    var toggle = document.getElementById('navToggle');
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 // HTML Escaping (XSS-Schutz) - escapt auch Quotes, damit die Funktion
@@ -40,6 +44,45 @@ function debounce(fn, delay) {
             fn.apply(context, args);
         }, delay);
     };
+}
+
+// Versions-/Textvergleich: "10.0.0" sortiert nach "9.0.0", nicht davor
+var _collator = (typeof Intl !== 'undefined' && Intl.Collator)
+    ? new Intl.Collator('de', { numeric: true, sensitivity: 'base' })
+    : null;
+function compareText(a, b) {
+    a = a == null ? '' : String(a);
+    b = b == null ? '' : String(b);
+    return _collator ? _collator.compare(a, b) : a.localeCompare(b);
+}
+
+// "Aktualisiert"-Anzeige: frisch = Text, aus Cache = pulsierender Indikator
+function renderUpdatedAt(el, isFresh, text) {
+    if (!el) return;
+    if (isFresh) {
+        el.textContent = 'Aktualisiert: ' + text;
+    } else {
+        el.innerHTML = '<span class="stale-indicator"><span class="stale-dot"></span>' +
+            escapeHtml(text) + '</span>';
+    }
+}
+
+function renderUpdateError(el, e) {
+    if (!el) return;
+    el.innerHTML = '<span class="text-danger">' + escapeHtml(getErrorMessage(e)) + '</span>';
+}
+
+// Button während eines laufenden Requests sperren
+function setBusy(btn, busy) {
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    if (busy) {
+        btn.setAttribute('data-label', btn.textContent);
+        btn.textContent = 'Lädt…';
+    } else if (btn.getAttribute('data-label')) {
+        btn.textContent = btn.getAttribute('data-label');
+    }
 }
 
 // ============================================================================
@@ -91,10 +134,17 @@ function _isCacheStale(entry) {
  *
  * @param {string} url - API-Endpoint
  * @param {function} onData - Callback(data, isFresh) bei Daten
- * @param {function} onError - Callback(error) bei Fehler
+ * @param {function} onError - Callback(error, hadCache) bei Fehler; wird nur
+ *        aufgerufen wenn kein Cache angezeigt wird oder force gesetzt ist
  * @param {function} onLoading - Callback() wenn kein Cache und geladen wird
+ * @param {object} [opts] - { force: true } erzwingt die Revalidierung auch
+ *        bei frischem Cache (manueller Refresh); die alten Daten bleiben
+ *        dabei sichtbar, es gibt keinen Skeleton-Flash
+ * @returns {Promise} löst auf, sobald die Revalidierung abgeschlossen ist
+ *        (auch im Fehlerfall - Fehler laufen über onError)
  */
-function fetchSWR(url, onData, onError, onLoading) {
+function fetchSWR(url, onData, onError, onLoading, opts) {
+    var force = !!(opts && opts.force);
     var cached = _getCache(url);
     var hadCache = false;
 
@@ -105,8 +155,8 @@ function fetchSWR(url, onData, onError, onLoading) {
     }
 
     // Wenn Cache noch frisch ist, nicht neu laden
-    if (cached && !_isCacheStale(cached)) {
-        return;
+    if (hadCache && !force && !_isCacheStale(cached)) {
+        return Promise.resolve(cached.data);
     }
 
     // Kein Cache vorhanden -> Loading-State anzeigen
@@ -115,14 +165,15 @@ function fetchSWR(url, onData, onError, onLoading) {
     }
 
     // Im Hintergrund frische Daten holen (revalidate)
-    fetchDeduped(url).then(function(data) {
+    return fetchDeduped(url).then(function(data) {
         _setCache(url, data);
         onData(data, true);
-    }).catch(function(err) {
-        // Nur Fehler anzeigen wenn kein Cache vorhanden war
-        if (!hadCache) {
-            onError(err);
-        }
+        return data;
+    }, function(err) {
+        // Bei vorhandenem Cache bleiben die alten Daten stehen; nur bei
+        // manuellem Refresh wird der Fehler trotzdem gemeldet
+        if (!hadCache || force) onError(err, hadCache);
+        return null;
     });
 }
 
@@ -135,7 +186,7 @@ function fetchDeduped(url) {
     if (_pendingRequests[url]) {
         return _pendingRequests[url];
     }
-    var promise = fetch(url).then(function(res) {
+    var promise = fetch(url, { headers: { 'Accept': 'application/json' } }).then(function(res) {
         delete _pendingRequests[url];
         if (!res.ok) throw new Error('Server antwortet nicht (' + res.status + ')');
         return res.json();
@@ -147,17 +198,23 @@ function fetchDeduped(url) {
     return promise;
 }
 
-// Prefetch für nächste Seite
+// Prefetch für nächste Seite: füllt den SWR-Cache, damit die Unterseite
+// beim Aufruf sofort Daten hat. Läuft nur, wenn der Cache fehlt/veraltet ist.
 function prefetchData(urls) {
+    var run = function() {
+        urls.forEach(function(url) {
+            var cached = _getCache(url);
+            if (cached && cached.data && !_isCacheStale(cached)) return;
+            fetchDeduped(url).then(function(data) {
+                _setCache(url, data);
+            }, function() { /* Prefetch-Fehler ignorieren */ });
+        });
+    };
     if (!window.requestIdleCallback) {
-        setTimeout(function() {
-            urls.forEach(function(url) { fetchDeduped(url); });
-        }, 1000);
+        setTimeout(run, 1000);
         return;
     }
-    window.requestIdleCallback(function() {
-        urls.forEach(function(url) { fetchDeduped(url); });
-    }, { timeout: 3000 });
+    window.requestIdleCallback(run, { timeout: 3000 });
 }
 
 // ============================================================================
@@ -173,8 +230,10 @@ function createSkeletonRows(count, columns) {
         tr.className = 'skeleton-row';
         var html = '';
         for (var j = 0; j < columns; j++) {
-            var width = 40 + Math.floor(Math.random() * 40); // 40-80%
-            html += '<td><div class="skeleton-line" style="width:' + width + '%"></div></td>';
+            // Breite über CSS-Klassen (w1-w4) statt inline style: die CSP
+            // erlaubt nur style-src 'self', inline-Styles würden blockiert
+            var w = 1 + Math.floor(Math.random() * 4);
+            html += '<td><div class="skeleton-line skeleton-w' + w + '"></div></td>';
         }
         tr.innerHTML = html;
         fragment.appendChild(tr);
@@ -190,13 +249,19 @@ document.addEventListener('DOMContentLoaded', function() {
     var themeToggle = document.getElementById('themeToggle');
     if (themeToggle) themeToggle.addEventListener('click', toggleDarkMode);
 
-    // Sortierbare Spalten-Header
+    // Sortierbare Spalten-Header (Maus + Tastatur)
     var sortHeaders = document.querySelectorAll('th.sortable');
+    var onSort = function(ev) {
+        if (ev.type === 'keydown') {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            ev.preventDefault();
+        }
+        if (typeof sortBy === 'function') {
+            sortBy(this.getAttribute('data-sort'));
+        }
+    };
     for (var i = 0; i < sortHeaders.length; i++) {
-        sortHeaders[i].addEventListener('click', function() {
-            if (typeof sortBy === 'function') {
-                sortBy(this.getAttribute('data-sort'));
-            }
-        });
+        sortHeaders[i].addEventListener('click', onSort);
+        sortHeaders[i].addEventListener('keydown', onSort);
     }
 });

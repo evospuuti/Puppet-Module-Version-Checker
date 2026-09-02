@@ -9,31 +9,33 @@ var AVD_API_URL = '/api/avd-components?v=2';
 var inventory = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    fetchInventory();
+    fetchInventory(false);
     document.getElementById('refreshBtn').addEventListener('click', function() {
-        try { localStorage.removeItem(_getCacheKey(AVD_API_URL)); } catch(e) {}
-        fetchInventory();
+        // Manueller Refresh: Cache umgehen, vorhandene Daten bleiben sichtbar
+        fetchInventory(true);
     });
 });
 
-function fetchInventory() {
-    fetchSWR(AVD_API_URL,
+function fetchInventory(force) {
+    var btn = document.getElementById('refreshBtn');
+    var ts = document.getElementById('lastUpdated');
+    setBusy(btn, true);
+
+    return fetchSWR(AVD_API_URL,
         function(data, isFresh) {
             if (!data || !data.items) return; // altes Cache-Format ignorieren
             inventory = data;
             renderAll();
-
-            var ts = document.getElementById('lastUpdated');
-            if (ts) {
-                if (isFresh) {
-                    ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
-                } else {
-                    ts.innerHTML = '<span class="stale-indicator"><span class="stale-dot"></span>wird aktualisiert</span>';
-                }
-            }
+            renderUpdatedAt(ts, isFresh,
+                isFresh ? new Date().toLocaleTimeString('de-DE') : 'wird aktualisiert');
         },
-        function(e) {
+        function(e, hadCache) {
             console.error(e);
+            if (hadCache && inventory) {
+                // Alte Daten stehen noch - Fehler nur in der Statuszeile zeigen
+                renderUpdateError(ts, e);
+                return;
+            }
             document.getElementById('categoryGroups').innerHTML =
                 '<div class="card"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></div>';
         },
@@ -47,8 +49,9 @@ function fetchInventory() {
                 card.querySelector('tbody').appendChild(createSkeletonRows(4, 6));
                 container.appendChild(card);
             }
-        }
-    );
+        },
+        { force: !!force }
+    ).then(function() { setBusy(btn, false); });
 }
 
 function renderAll() {
@@ -83,11 +86,18 @@ function renderCategories() {
     var container = document.getElementById('categoryGroups');
     container.textContent = '';
 
+    // Einmal nach Kategorie gruppieren statt pro Kategorie alle Items zu filtern
+    var byKategorie = {};
+    for (var i = 0; i < inventory.items.length; i++) {
+        var it = inventory.items[i];
+        (byKategorie[it.kategorie] = byKategorie[it.kategorie] || []).push(it);
+    }
+
     var kategorien = inventory.kategorien || [];
     for (var k = 0; k < kategorien.length; k++) {
         var kat = kategorien[k];
-        var items = inventory.items.filter(function(it) { return it.kategorie === kat.key; });
-        if (!items.length) continue;
+        var items = byKategorie[kat.key];
+        if (!items || !items.length) continue;
 
         var card = document.createElement('div');
         card.className = 'card';
@@ -109,7 +119,8 @@ function renderCategories() {
         var table = document.createElement('table');
         table.innerHTML =
             '<thead><tr>' +
-            '<th>Artefakt</th><th>Ist</th><th>Art</th><th>Neueste</th><th>Status</th><th>Repo</th><th>Link</th>' +
+            '<th scope="col">Artefakt</th><th scope="col">Ist</th><th scope="col">Art</th>' +
+            '<th scope="col">Neueste</th><th scope="col">Status</th><th scope="col">Repo</th><th scope="col">Link</th>' +
             '</tr></thead>';
         var tbody = document.createElement('tbody');
 
@@ -174,16 +185,16 @@ function renderTermine() {
     card.innerHTML = '<h3 class="category-title">Termine &amp; Verfallsdaten</h3>' +
         '<p class="text-muted text-small mb-2">Timeline für anstehende Entscheidungen und Fristen</p>' +
         '<div class="table-container"><table><thead><tr>' +
-        '<th>Datum</th><th>Ereignis</th><th>Status</th>' +
+        '<th scope="col">Datum</th><th scope="col">Ereignis</th><th scope="col">Status</th>' +
         '</tr></thead><tbody></tbody></table></div>';
     var tbody = card.querySelector('tbody');
 
-    var now = Date.now();
+    var soonLimit = Date.now() + 60 * 24 * 3600 * 1000; // 60 Tage
     for (var i = 0; i < termine.length; i++) {
         var t = termine[i];
         var done = /^erledigt/.test(t.status || '');
         var due = Date.parse(t.datum);
-        var soon = !done && !isNaN(due) && (due - now) < 60 * 24 * 3600 * 1000;
+        var soon = !done && !isNaN(due) && due < soonLimit;
         var badgeClass = done ? 'badge-success' : (soon ? 'badge-warning' : 'badge-neutral');
 
         var tr = document.createElement('tr');
@@ -207,7 +218,7 @@ function renderKontrakte() {
     card.innerHTML = '<h3 class="category-title">Cross-Repo-Kontrakte</h3>' +
         '<p class="text-muted text-small mb-2">Konsistenz statt Latest - Werte müssen zwischen den Repos übereinstimmen</p>' +
         '<div class="table-container"><table><thead><tr>' +
-        '<th>Kontrakt</th><th>Beteiligte</th><th>Prüfung</th>' +
+        '<th scope="col">Kontrakt</th><th scope="col">Beteiligte</th><th scope="col">Prüfung</th>' +
         '</tr></thead><tbody></tbody></table></div>';
     var tbody = card.querySelector('tbody');
 

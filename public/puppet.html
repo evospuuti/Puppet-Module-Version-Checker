@@ -3,34 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0066cc">
+    <meta name="description" content="Puppet Module: Vergleich der getrackten Versionen mit Puppet Forge">
     <title>Puppet Module - Version Tracker</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+    <script src="/scripts/theme-init.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/shared.css?v=4">
     <link rel="dns-prefetch" href="https://forgeapi.puppet.com">
-    <link rel="stylesheet" href="/styles/shared.css?v=3">
-    <script src="/scripts/theme-init.js?v=3"></script>
 </head>
 <body>
-    <nav class="nav">
+    <a href="#main" class="skip-link">Zum Inhalt springen</a>
+    <nav class="nav" aria-label="Hauptnavigation">
         <div class="nav-container">
             <a href="/" class="nav-brand">Version Tracker</a>
-            <button class="nav-toggle" id="navToggle" aria-label="Menü">&#9776;</button>
-            <div class="nav-links">
+            <button class="nav-toggle" id="navToggle" aria-label="Menü" aria-expanded="false" aria-controls="navLinks">&#9776;</button>
+            <div class="nav-links" id="navLinks">
                 <a href="/">Dashboard</a>
-                <a href="/puppet.html" class="active">Puppet Module</a>
+                <a href="/puppet.html" class="active" aria-current="page">Puppet Module</a>
                 <a href="/avd.html">AVD Inventar</a>
-                <button id="themeToggle" class="btn btn-secondary">Theme</button>
+                <button id="themeToggle" class="btn btn-secondary" aria-label="Farbschema wechseln">Theme</button>
             </div>
         </div>
     </nav>
 
-    <main class="container">
+    <main class="container" id="main">
         <div class="page-header flex justify-between items-center">
             <div>
                 <h1 class="page-title">Puppet Module</h1>
                 <p class="page-subtitle">Vergleich mit Puppet Forge</p>
             </div>
             <div class="flex items-center gap-1">
-                <span class="text-muted text-small" id="lastUpdated"></span>
+                <span class="text-muted text-small" id="lastUpdated" aria-live="polite"></span>
                 <button id="refreshBtn" class="btn btn-primary">Aktualisieren</button>
             </div>
         </div>
@@ -51,20 +55,20 @@
         </div>
 
         <div class="card">
-            <div class="flex justify-between items-center mb-2">
-                <input type="text" id="filter" class="filter-input" placeholder="Filter...">
-                <span class="text-muted" id="moduleCount"></span>
+            <div class="flex justify-between items-center gap-1 mb-2">
+                <input type="search" id="filter" class="filter-input" placeholder="Filter..." aria-label="Module filtern" autocomplete="off">
+                <span class="text-muted" id="moduleCount" aria-live="polite"></span>
             </div>
 
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th class="sortable" data-sort="name" data-label="Modul">Modul</th>
-                            <th class="sortable" data-sort="tracked" data-label="Tracked">Tracked</th>
-                            <th class="sortable" data-sort="forge" data-label="Forge">Forge</th>
-                            <th class="sortable" data-sort="status" data-label="Status">Status</th>
-                            <th>Link</th>
+                            <th scope="col" class="sortable" data-sort="name" data-label="Modul" tabindex="0">Modul</th>
+                            <th scope="col" class="sortable" data-sort="tracked" data-label="Tracked" tabindex="0">Tracked</th>
+                            <th scope="col" class="sortable" data-sort="forge" data-label="Forge" tabindex="0">Forge</th>
+                            <th scope="col" class="sortable" data-sort="status" data-label="Status" tabindex="0">Status</th>
+                            <th scope="col">Link</th>
                         </tr>
                     </thead>
                     <tbody id="moduleTable">
@@ -75,7 +79,7 @@
         </div>
     </main>
 
-    <script src="/scripts/shared.js?v=3"></script>
-    <script src="/scripts/puppet.js?v=3"></script>
+    <script src="/scripts/shared.js?v=4"></script>
+    <script src="/scripts/puppet.js?v=4"></script>
 </body>
 </html>

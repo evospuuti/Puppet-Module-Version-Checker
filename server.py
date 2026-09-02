@@ -27,6 +27,11 @@ app = Flask(__name__)
 # sich ein gemeinsames Limit.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
+# Kompaktes JSON ohne \uXXXX-Escapes: Umlaute in Hinweisen/Terminen werden
+# als UTF-8 ausgeliefert statt 6 Byte pro Zeichen (kleinere Antworten).
+app.json.compact = True
+app.json.ensure_ascii = False
+
 # CORS nur für eigene Origin erlauben (Vercel-Domain + lokale Entwicklung)
 CORS(app, origins=[
     'https://puppet-module-version-checker.vercel.app',
@@ -86,6 +91,12 @@ def add_security_headers(response):
             and response.status_code == 200):
         response.headers['Cache-Control'] = (
             'public, max-age=0, s-maxage=300, stale-while-revalidate=600')
+        # ETag + Conditional GET: max-age=0 lässt den Browser bei jedem
+        # Seitenaufruf revalidieren. Mit passendem If-None-Match geht nur
+        # ein 304 ohne Body über die Leitung statt der kompletten JSON-Antwort.
+        if not response.direct_passthrough:
+            response.add_etag()
+            response = response.make_conditional(request)
 
     return response
 
@@ -593,7 +604,14 @@ def fetch_all_data():
         'hinweise': inventory.get('hinweise', []),
         'meta': inventory.get('_meta', {}),
     }
-    return {'modules': modules, 'avd': avd}
+    return {
+        'modules': modules,
+        'avd': avd,
+        # Zeitpunkt des Upstream-Abrufs: wird im Dashboard als "Aktualisiert"
+        # angezeigt und hält den ETag von /api/system_status über die
+        # Cache-Laufzeit stabil (statt bei jedem Request neu zu wechseln).
+        'fetched_at': datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    }
 
 # ============================================================================
 # STATIC FILES ROUTES
@@ -671,9 +689,11 @@ def get_system_status():
     # Puppet Module Status
     puppet_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
     avd_status = {"status": "Unbekannt", "details": "Keine Daten verfügbar"}
+    timestamp = None
 
     try:
         all_data = fetch_all_data()
+        timestamp = all_data.get('fetched_at')
         modules = all_data['modules']
         avd_items = all_data['avd']['items']
 
@@ -726,7 +746,7 @@ def get_system_status():
     return jsonify({
         "puppet": puppet_status,
         "avd": avd_status,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     })
 
 # ============================================================================

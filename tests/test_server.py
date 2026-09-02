@@ -1493,3 +1493,125 @@ def test_known_pages_count():
     """_KNOWN_PAGES hat genau 4 Einträge."""
     assert len(server._KNOWN_PAGES) == 4
 
+
+
+# ============================================================================
+# INTEGRATION TESTS - ETAG / CONDITIONAL GET / JSON-ENCODING
+# ============================================================================
+
+def test_api_responses_have_etag(client):
+    """API-Antworten tragen einen ETag für Conditional GETs."""
+    with patch.object(server, 'fetch_modules_data', return_value=[]):
+        res = client.get('/api/modules')
+    assert res.headers.get('ETag')
+
+
+def test_api_conditional_request_returns_304(client):
+    """Passender If-None-Match liefert 304 ohne Body."""
+    with patch.object(server, 'fetch_modules_data', return_value=[{'name': 'x'}]):
+        first = client.get('/api/modules')
+        etag = first.headers['ETag']
+        second = client.get('/api/modules', headers={'If-None-Match': etag})
+    assert first.status_code == 200
+    assert second.status_code == 304
+    assert second.data == b''
+
+
+def test_api_conditional_request_stale_etag_returns_200(client):
+    """Nicht passender If-None-Match liefert die volle Antwort."""
+    with patch.object(server, 'fetch_modules_data', return_value=[{'name': 'x'}]):
+        res = client.get('/api/modules', headers={'If-None-Match': '"veraltet"'})
+    assert res.status_code == 200
+    assert res.get_json() == [{'name': 'x'}]
+
+
+def test_api_error_responses_have_no_etag(client):
+    """Fehlerantworten (500) bekommen keinen ETag."""
+    with patch.object(server, 'fetch_modules_data', side_effect=Exception('x')):
+        res = client.get('/api/modules')
+    assert res.status_code == 500
+    assert 'ETag' not in res.headers
+
+
+def test_api_json_is_compact_utf8(client):
+    """JSON ist kompakt und liefert Umlaute als UTF-8 statt \\uXXXX."""
+    with patch.object(server, 'fetch_modules_data', return_value=[{'name': 'Prüfung'}]):
+        res = client.get('/api/modules')
+    assert res.data.strip() == '[{"name":"Prüfung"}]'.encode('utf-8')
+    assert b'\\u00fc' not in res.data
+
+
+def test_system_status_timestamp_is_fetch_time(client, mock_versions, mock_inventory):
+    """Der Timestamp im System-Status ist der (gecachte) Abrufzeitpunkt."""
+    all_data = {'modules': [], 'avd': {'items': []}, 'fetched_at': '2026-01-02 03:04:05'}
+    with patch.object(server, 'fetch_all_data', return_value=all_data):
+        res = client.get('/api/system_status')
+    assert res.get_json()['timestamp'] == '2026-01-02 03:04:05'
+
+
+def test_system_status_etag_stable_while_cached(client):
+    """Bei gecachten Daten bleibt der ETag von /api/system_status gleich."""
+    all_data = {'modules': [], 'avd': {'items': []}, 'fetched_at': '2026-01-02 03:04:05'}
+    with patch.object(server, 'fetch_all_data', return_value=all_data):
+        a = client.get('/api/system_status')
+        b = client.get('/api/system_status')
+    assert a.headers['ETag'] == b.headers['ETag']
+
+
+def test_fetch_all_data_includes_fetched_at(mock_versions, mock_inventory):
+    """fetch_all_data liefert den Abrufzeitpunkt mit."""
+    with patch.object(server, 'load_versions', return_value=mock_versions), \
+         patch.object(server, 'load_avd_inventory', return_value=mock_inventory), \
+         patch.object(server, '_fetch_single_module', return_value={'name': 'm'}), \
+         patch.object(server, '_check_inventory_item', return_value={'id': 'a'}):
+        result = server.fetch_all_data()
+    assert 'fetched_at' in result
+    time.strptime(result['fetched_at'], "%Y-%m-%d %H:%M:%S")
+
+
+# ============================================================================
+# INTEGRATION TESTS - HTML: LADEREIHENFOLGE & ACCESSIBILITY
+# ============================================================================
+
+def test_theme_init_loads_before_stylesheet(client):
+    """theme-init.js steht vor dem Stylesheet, damit es nicht auf das CSS wartet."""
+    for path in ['/', '/puppet.html', '/avd.html']:
+        html = client.get(path).data
+        assert html.index(b'theme-init.js') < html.index(b'shared.css'), path
+
+
+def test_nav_toggle_is_accessible(client):
+    """Mobile-Menü-Button hat aria-expanded und aria-controls."""
+    for path in ['/', '/puppet.html', '/avd.html']:
+        html = client.get(path).data
+        assert b'aria-expanded="false"' in html, path
+        assert b'aria-controls="navLinks"' in html, path
+        assert b'id="navLinks"' in html, path
+
+
+def test_pages_have_skip_link_and_main_id(client):
+    """Skip-Link zeigt auf den main-Bereich."""
+    for path in ['/', '/puppet.html', '/avd.html']:
+        html = client.get(path).data
+        assert b'class="skip-link"' in html, path
+        assert b'id="main"' in html, path
+
+
+def test_active_nav_link_has_aria_current(client):
+    """Die aktive Seite ist per aria-current markiert."""
+    for path in ['/', '/puppet.html', '/avd.html']:
+        html = client.get(path).data
+        assert html.count(b'aria-current="page"') == 1, path
+
+
+def test_puppet_sortable_headers_are_keyboard_focusable(client):
+    """Sortierbare Spalten sind per Tab erreichbar."""
+    html = client.get('/puppet.html').data
+    assert html.count(b'class="sortable"') == 4
+    assert html.count(b'tabindex="0"') == 4
+
+
+def test_puppet_filter_has_label(client):
+    """Filter-Input ist per aria-label beschriftet."""
+    html = client.get('/puppet.html').data
+    assert b'aria-label="Module filtern"' in html
