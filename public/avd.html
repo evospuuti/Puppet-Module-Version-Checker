@@ -3,33 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0066cc">
+    <meta name="description" content="AVD Versionsinventar: versionsprüfbare Artefakte der Repos Core, Packer, AMS und SAP">
     <title>AVD Versionsinventar - Version Tracker</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-    <link rel="stylesheet" href="/styles/shared.css?v=3">
-    <script src="/scripts/theme-init.js?v=3"></script>
+    <script src="/scripts/theme-init.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/shared.css?v=4">
 </head>
 <body>
-    <nav class="nav">
+    <a href="#main" class="skip-link">Zum Inhalt springen</a>
+    <nav class="nav" aria-label="Hauptnavigation">
         <div class="nav-container">
             <a href="/" class="nav-brand">Version Tracker</a>
-            <button class="nav-toggle" id="navToggle" aria-label="Menü">&#9776;</button>
-            <div class="nav-links">
+            <button class="nav-toggle" id="navToggle" aria-label="Menü" aria-expanded="false" aria-controls="navLinks">&#9776;</button>
+            <div class="nav-links" id="navLinks">
                 <a href="/">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
-                <a href="/avd.html" class="active">AVD Inventar</a>
-                <button id="themeToggle" class="btn btn-secondary">Theme</button>
+                <a href="/avd.html" class="active" aria-current="page">AVD Inventar</a>
+                <button id="themeToggle" class="btn btn-secondary" aria-label="Farbschema wechseln">Theme</button>
             </div>
         </div>
     </nav>
 
-    <main class="container">
+    <main class="container" id="main">
         <div class="page-header flex justify-between items-center">
             <div>
                 <h1 class="page-title">AVD Versionsinventar</h1>
                 <p class="page-subtitle">Alle versionsprüfbaren Artefakte der vier Repos (Core, Packer, AMS, SAP)</p>
             </div>
             <div class="flex items-center gap-1">
-                <span class="text-muted text-small" id="lastUpdated"></span>
+                <span class="text-muted text-small" id="lastUpdated" aria-live="polite"></span>
                 <button id="refreshBtn" class="btn btn-primary">Aktualisieren</button>
             </div>
         </div>
@@ -70,7 +74,7 @@
         <div id="hinweiseSection"></div>
     </main>
 
-    <script src="/scripts/shared.js?v=3"></script>
-    <script src="/scripts/avd.js?v=3"></script>
+    <script src="/scripts/shared.js?v=4"></script>
+    <script src="/scripts/avd.js?v=4"></script>
 </body>
 </html>

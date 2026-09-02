@@ -67,4 +67,7 @@ authentifiziert (höheres Rate-Limit).
 
 Die Ergebnisse werden serverseitig 5 Minuten gecacht (ein gemeinsamer Cache
 für alle drei Daten-Endpoints), das Frontend cacht zusätzlich per
-Stale-While-Revalidate in `localStorage`.
+Stale-While-Revalidate in `localStorage`. API-Antworten tragen einen ETag;
+ein Conditional GET mit passendem `If-None-Match` liefert 304 ohne Body.
+"Aktualisieren" im Frontend erzwingt die Revalidierung, die vorhandenen
+Daten bleiben dabei sichtbar.

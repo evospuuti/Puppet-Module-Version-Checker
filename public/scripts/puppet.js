@@ -5,35 +5,40 @@ var sortAsc = true;
 var debouncedFilter = debounce(function() { renderTable(); }, 150);
 
 document.addEventListener('DOMContentLoaded', function() {
-    fetchModules();
+    fetchModules(false);
     document.getElementById('refreshBtn').addEventListener('click', function() {
-        // Bei manuellem Refresh: Cache löschen und neu laden
-        try { localStorage.removeItem(_getCacheKey('/api/modules')); } catch(e) {}
-        fetchModules();
+        // Manueller Refresh: Cache umgehen, vorhandene Daten bleiben sichtbar
+        fetchModules(true);
     });
     document.getElementById('filter').addEventListener('input', debouncedFilter);
 });
 
-function fetchModules() {
-    fetchSWR('/api/modules',
+function fetchModules(force) {
+    var btn = document.getElementById('refreshBtn');
+    var ts = document.getElementById('lastUpdated');
+    setBusy(btn, true);
+
+    return fetchSWR('/api/modules',
         // onData: Daten anzeigen (cached oder frisch)
         function(data, isFresh) {
-            modules = data;
+            modules = (data || []).map(function(m) {
+                // Suchtext einmal vorberechnen statt pro Tastendruck
+                m._search = (m.name + ' ' + m.serverVersion + ' ' + m.forgeVersion).toLowerCase();
+                return m;
+            });
             renderTable();
             updateStats();
-
-            var ts = document.getElementById('lastUpdated');
-            if (ts) {
-                if (isFresh) {
-                    ts.textContent = 'Aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
-                } else {
-                    ts.innerHTML = '<span class="stale-indicator"><span class="stale-dot"></span>wird aktualisiert</span>';
-                }
-            }
+            renderUpdatedAt(ts, isFresh,
+                isFresh ? new Date().toLocaleTimeString('de-DE') : 'wird aktualisiert');
         },
         // onError
-        function(e) {
+        function(e, hadCache) {
             console.error(e);
+            if (hadCache) {
+                // Alte Daten stehen noch - Fehler nur in der Statuszeile zeigen
+                renderUpdateError(ts, e);
+                return;
+            }
             document.getElementById('moduleTable').innerHTML =
                 '<tr><td colspan="5"><div class="error-message">' + escapeHtml(getErrorMessage(e)) + '</div></td></tr>';
         },
@@ -42,8 +47,9 @@ function fetchModules() {
             var table = document.getElementById('moduleTable');
             table.textContent = '';
             table.appendChild(createSkeletonRows(6, 5));
-        }
-    );
+        },
+        { force: !!force }
+    ).then(function() { setBusy(btn, false); });
 }
 
 function sortBy(column) {
@@ -57,28 +63,24 @@ function sortBy(column) {
 }
 
 function renderTable() {
-    var filter = document.getElementById('filter').value.toLowerCase();
-    var filtered = modules.filter(function(m) {
-        return m.name.toLowerCase().includes(filter) ||
-            m.serverVersion.toLowerCase().includes(filter);
-    });
+    var filter = document.getElementById('filter').value.trim().toLowerCase();
+    var filtered = filter
+        ? modules.filter(function(m) { return m._search.indexOf(filter) !== -1; })
+        : modules.slice();
 
     filtered.sort(function(a, b) {
-        var valA, valB;
-        if (sortColumn === 'name') { valA = a.name; valB = b.name; }
-        else if (sortColumn === 'status') { valA = getSortOrder(a); valB = getSortOrder(b); }
-        else if (sortColumn === 'tracked') { valA = a.serverVersion; valB = b.serverVersion; }
-        else if (sortColumn === 'forge') { valA = a.forgeVersion; valB = b.forgeVersion; }
-        else { valA = a.name; valB = b.name; }
-
-        if (typeof valA === 'string') {
-            var cmp = valA.localeCompare(valB);
-            return sortAsc ? cmp : -cmp;
-        }
-        return sortAsc ? valA - valB : valB - valA;
+        var cmp;
+        if (sortColumn === 'status') cmp = getSortOrder(a) - getSortOrder(b);
+        else if (sortColumn === 'tracked') cmp = compareText(a.serverVersion, b.serverVersion);
+        else if (sortColumn === 'forge') cmp = compareText(a.forgeVersion, b.forgeVersion);
+        else cmp = compareText(a.name, b.name);
+        // Stabile Zweitsortierung nach Name
+        if (cmp === 0) cmp = compareText(a.name, b.name);
+        return sortAsc ? cmp : -cmp;
     });
 
-    document.getElementById('moduleCount').textContent = filtered.length + ' Module';
+    document.getElementById('moduleCount').textContent =
+        filtered.length + (filtered.length === 1 ? ' Modul' : ' Module');
     updateSortHeaders();
 
     var fragment = document.createDocumentFragment();
@@ -95,6 +97,10 @@ function renderTable() {
     }
     var table = document.getElementById('moduleTable');
     table.textContent = '';
+    if (!filtered.length) {
+        table.innerHTML = '<tr><td colspan="5" class="text-muted">Keine Module gefunden</td></tr>';
+        return;
+    }
     table.appendChild(fragment);
 }
 
@@ -105,9 +111,11 @@ function updateSortHeaders() {
         var col = th.getAttribute('data-sort');
         var base = th.getAttribute('data-label');
         if (col === sortColumn) {
-            th.textContent = base + (sortAsc ? ' \u25B2' : ' \u25BC');
+            th.textContent = base + (sortAsc ? ' ▲' : ' ▼');
+            th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
         } else {
             th.textContent = base;
+            th.removeAttribute('aria-sort');
         }
     }
 }

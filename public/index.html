@@ -3,31 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#0066cc">
+    <meta name="description" content="Dashboard: Status aller getrackten Puppet-Module und AVD-Artefakte">
     <title>Version Tracker</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-    <!-- autoresearch-Pattern: DNS-Prefetch & Preconnect für externe APIs -->
+    <!-- Theme vor dem Stylesheet setzen: Script wartet so nicht auf das CSS, kein Flash -->
+    <script src="/scripts/theme-init.js?v=4"></script>
+    <link rel="stylesheet" href="/styles/shared.css?v=4">
+    <!-- DNS-Prefetch für externe APIs -->
     <link rel="dns-prefetch" href="https://forgeapi.puppet.com">
     <!-- Prefetch Detail-Seiten für schnellere Navigation -->
     <link rel="prefetch" href="/puppet.html">
     <link rel="prefetch" href="/avd.html">
-    <link rel="stylesheet" href="/styles/shared.css?v=3">
-    <script src="/scripts/theme-init.js?v=3"></script>
 </head>
 <body>
-    <nav class="nav">
+    <a href="#main" class="skip-link">Zum Inhalt springen</a>
+    <nav class="nav" aria-label="Hauptnavigation">
         <div class="nav-container">
             <a href="/" class="nav-brand">Version Tracker</a>
-            <button class="nav-toggle" id="navToggle" aria-label="Menü">&#9776;</button>
-            <div class="nav-links">
-                <a href="/" class="active">Dashboard</a>
+            <button class="nav-toggle" id="navToggle" aria-label="Menü" aria-expanded="false" aria-controls="navLinks">&#9776;</button>
+            <div class="nav-links" id="navLinks">
+                <a href="/" class="active" aria-current="page">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
                 <a href="/avd.html">AVD Inventar</a>
-                <button id="themeToggle" class="btn btn-secondary">Theme</button>
+                <button id="themeToggle" class="btn btn-secondary" aria-label="Farbschema wechseln">Theme</button>
             </div>
         </div>
     </nav>
 
-    <main class="container">
+    <main class="container" id="main">
         <div class="page-header">
             <h1 class="page-title">Dashboard</h1>
             <p class="page-subtitle">Status-Übersicht aller getrackten Versionen</p>
@@ -58,15 +63,15 @@
         <div class="card">
             <div class="flex justify-between items-center mb-2">
                 <h3>Status Details</h3>
-                <span class="text-muted text-small" id="lastUpdated"></span>
+                <span class="text-muted text-small" id="lastUpdated" aria-live="polite"></span>
             </div>
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>Kategorie</th>
-                            <th>Status</th>
-                            <th>Details</th>
+                            <th scope="col">Kategorie</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Details</th>
                         </tr>
                     </thead>
                     <tbody id="statusTable">
@@ -77,7 +82,7 @@
         </div>
     </main>
 
-    <script src="/scripts/shared.js?v=3"></script>
-    <script src="/scripts/index.js?v=3"></script>
+    <script src="/scripts/shared.js?v=4"></script>
+    <script src="/scripts/index.js?v=4"></script>
 </body>
 </html>
