@@ -5,15 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#0066cc">
-    <meta name="description" content="Dashboard: Status aller getrackten Puppet-Module und AVD-Artefakte">
+    <meta name="description" content="Dashboard: Status aller getrackten Puppet-Module">
     <title>Version Tracker</title>
     <link rel="icon" href="/favicon.ico" type="image/svg+xml">
     <!-- Theme vor dem Stylesheet setzen: Script wartet so nicht auf das CSS, kein Flash -->
-    <script src="/scripts/theme-init.js?v=4"></script>
-    <link rel="stylesheet" href="/styles/shared.css?v=4">
+    <script src="/scripts/theme-init.js?v=5"></script>
+    <link rel="stylesheet" href="/styles/shared.css?v=5">
     <!-- Prefetch Detail-Seiten für schnellere Navigation -->
     <link rel="prefetch" href="/puppet.html">
-    <link rel="prefetch" href="/avd.html">
 </head>
 <body>
     <a href="#main" class="skip-link">Zum Inhalt springen</a>
@@ -24,7 +23,6 @@
             <div class="nav-links" id="navLinks">
                 <a href="/" class="active" aria-current="page">Dashboard</a>
                 <a href="/puppet.html">Puppet Module</a>
-                <a href="/avd.html">AVD Inventar</a>
                 <button id="themeToggle" class="btn btn-secondary" aria-label="Farbschema wechseln">Theme</button>
             </div>
         </div>
@@ -41,20 +39,12 @@
                 <div class="stat-value" id="puppetStatus">-</div>
                 <div class="stat-label">Puppet Module</div>
             </div>
-            <div class="stat">
-                <div class="stat-value" id="avdStatus">-</div>
-                <div class="stat-label">AVD Inventar</div>
-            </div>
         </div>
 
         <div class="card-grid">
             <a href="/puppet.html" class="card card-link">
                 <h3 class="mb-1">Puppet Module</h3>
                 <p class="text-muted">Vergleich zwischen installierten und aktuellen Forge-Versionen</p>
-            </a>
-            <a href="/avd.html" class="card card-link">
-                <h3 class="mb-1">AVD Inventar</h3>
-                <p class="text-muted">Azure Virtual Desktop - Versionsinventar der vier Repos (Core, Packer, AMS, SAP)</p>
             </a>
         </div>
 
@@ -80,7 +70,7 @@
         </div>
     </main>
 
-    <script src="/scripts/shared.js?v=4"></script>
-    <script src="/scripts/index.js?v=4"></script>
+    <script src="/scripts/shared.js?v=5"></script>
+    <script src="/scripts/index.js?v=5"></script>
 </body>
 </html>

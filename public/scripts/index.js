@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     loadStatus();
 
-    // Prefetch für Unterseiten-Daten (?v=2 = Cache-Key der AVD-Inventar-Seite)
-    prefetchData(['/api/modules', '/api/avd-components?v=2']);
+    // Prefetch für die Puppet-Seite
+    prefetchData(['/api/modules']);
 });
 
 function loadStatus() {
@@ -13,13 +13,8 @@ function loadStatus() {
             puppetEl.textContent = data.puppet.status;
             puppetEl.className = 'stat-value ' + getStatusClass(data.puppet.status);
 
-            var avdEl = document.getElementById('avdStatus');
-            avdEl.textContent = data.avd.status;
-            avdEl.className = 'stat-value ' + getStatusClass(data.avd.status);
-
             var fragment = document.createDocumentFragment();
             fragment.appendChild(buildStatusRow('Puppet Module', data.puppet));
-            fragment.appendChild(buildStatusRow('AVD Inventar', data.avd));
 
             var table = document.getElementById('statusTable');
             table.textContent = '';
