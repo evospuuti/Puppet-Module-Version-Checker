@@ -33,18 +33,8 @@ def _mock_forge_response(version='9.7.0', deprecated=None):
     m = MagicMock()
     m.status_code = 200
     m.json.return_value = {
-        'current_release': {'version': version},
-        'deprecated_at': deprecated
+        'results': [{'version': version, 'module': {'deprecated_at': deprecated}}]
     }
-    return m
-
-
-def _mock_registry_response(version='3.7.2'):
-    m = MagicMock()
-    m.status_code = 200
-    m.json.return_value = {'version': version, 'current_version': version,
-                           'versions': [{'version': version}]}
-    m.text = '<d:Version>%s</d:Version>' % version
     return m
 
 
@@ -54,13 +44,6 @@ def _mock_github_response(tag='v1.14.8'):
     m.json.return_value = {'tag_name': tag}
     m.text = ''
     return m
-
-
-def _mock_avd_get(url, **kwargs):
-    """Passende Mock-Response je nach AVD check_type (GitHub vs. Registry)."""
-    if 'api.github.com' in url:
-        return _mock_github_response()
-    return _mock_registry_response()
 
 
 def _measure_ms(fn, iterations=20):
@@ -100,11 +83,6 @@ class TestStaticResponseTime:
         _print_result('GET /puppet.html', result)
         assert result['median'] < 20
 
-    def test_avd_html(self, client):
-        result = _measure_ms(lambda: client.get('/avd.html'))
-        _print_result('GET /avd.html', result)
-        assert result['median'] < 20
-
     def test_shared_css(self, client):
         result = _measure_ms(lambda: client.get('/styles/shared.css'))
         _print_result('GET /styles/shared.css', result)
@@ -134,15 +112,8 @@ class TestAPICachedOverhead:
         _print_result('GET /api/modules (cached)', result)
         assert result['median'] < 20
 
-    def test_api_avd_cached(self, client):
-        with patch.object(server, 'fetch_avd_data', return_value=[]):
-            client.get('/api/avd-components')
-            result = _measure_ms(lambda: client.get('/api/avd-components'))
-        _print_result('GET /api/avd-components (cached)', result)
-        assert result['median'] < 20
-
     def test_api_system_status_cached(self, client):
-        mock_data = {'modules': [], 'avd_components': []}
+        mock_data = {'modules': []}
         with patch.object(server, 'fetch_all_data', return_value=mock_data):
             client.get('/api/system_status')
             result = _measure_ms(lambda: client.get('/api/system_status'))
@@ -183,34 +154,15 @@ class TestParallelFetchReal:
         # Erlaubt bis 80ms für ThreadPool-Overhead
         assert result['median'] < 80, f"Zu langsam: {result['median']:.1f}ms"
 
-    def test_fetch_avd_parallel_10ms(self):
-        """AVD-Komponenten parallel mit 10ms simuliertem Delay."""
-        delay_ms = 10
-
-        def delayed_get(url, **kwargs):
-            time.sleep(delay_ms / 1000)
-            return _mock_avd_get(url)
-
-        def run_once():
-            server.cache.clear()
-            return server.fetch_avd_data()
-
-        with patch.object(server.requests.Session, 'get', side_effect=delayed_get):
-            result = _measure_ms(run_once, iterations=10)
-
-        _print_result(f'fetch_avd ({delay_ms}ms delay, no cache)', result)
-        # 10 Komponenten, 20 Worker, 10ms -> ideal 10ms (1 Batch)
-        assert result['median'] < 80
-
     def test_fetch_all_data_parallel_10ms(self):
-        """Alle Items (Module + GitHub + AVD) parallel mit 10ms simuliertem Delay."""
+        """Alle Items (Module + GitHub) parallel mit 10ms simuliertem Delay."""
         delay_ms = 10
 
         def delayed_get(url, **kwargs):
             time.sleep(delay_ms / 1000)
             if 'forgeapi' in url:
                 return _mock_forge_response()
-            return _mock_avd_get(url)
+            return _mock_github_response()
 
         def run_once():
             server.cache.clear()
@@ -220,7 +172,7 @@ class TestParallelFetchReal:
             result = _measure_ms(run_once, iterations=10)
 
         _print_result(f'fetch_all_data ({delay_ms}ms delay, no cache)', result)
-        # 24 Items, 20 Worker, 10ms -> ideal 20ms (2 Batches)
+        # 15 Items, 20 Worker, 10ms -> ideal 10ms (1 Batch)
         assert result['median'] < 80
 
 
@@ -240,27 +192,6 @@ class TestSingleFetchOverhead:
                 iterations=50
             )
         _print_result('_fetch_single_module (mocked, no delay)', result)
-        assert result['median'] < 5, f"Zu viel Overhead: {result['median']:.3f}ms"
-
-    def test_check_inventory_item_overhead(self):
-        item = {
-            'id': 'terraform-binary',
-            'kategorie': 'toolchain',
-            'artefakt': 'Terraform',
-            'repo': ['Core'],
-            'ist': '1.14.0',
-            'constraint': '>= 1.14.0, < 2.0.0',
-            'art': 'constraint',
-            'fundorte': ['providers.tf:16'],
-            'quelle': {'typ': 'github-release', 'ref': 'hashicorp/terraform'},
-        }
-        mock = _mock_github_response()
-        with patch.object(server.requests.Session, 'get', return_value=mock):
-            result = _measure_ms(
-                lambda: server._check_inventory_item(item),
-                iterations=50
-            )
-        _print_result('_check_inventory_item (mocked, no delay)', result)
         assert result['median'] < 5, f"Zu viel Overhead: {result['median']:.3f}ms"
 
 

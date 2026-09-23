@@ -20,6 +20,6 @@
   },
   "_meta": {
     "last_updated": "2026-08-18",
-    "description": "Tracked versions for Puppet Forge and GitHub Releases; AVD-Inventar lebt in avd_inventory.json"
+    "description": "Tracked versions for Puppet Forge and GitHub Releases"
   }
 }

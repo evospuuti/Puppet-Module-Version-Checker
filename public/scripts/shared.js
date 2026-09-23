@@ -94,6 +94,9 @@ function setBusy(btn, busy) {
 
 var _CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 Minuten
 
+// Einmalig: Cache-Eintrag der entfernten AVD-Seite löschen
+try { localStorage.removeItem('swr_/api/avd-components?v=2'); } catch (e) {}
+
 function _getCacheKey(url) {
     return 'swr_' + url;
 }
