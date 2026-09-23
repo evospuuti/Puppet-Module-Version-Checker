@@ -21,8 +21,12 @@ Backend: Flask (`server.py`), Frontend: statisches HTML/Vanilla-JS unter
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python server.py          # läuft auf http://localhost:5000
+python server.py          # läuft auf http://127.0.0.1:5000
 ```
+
+Der Werkzeug-Debugger (interaktive Python-Konsole im Browser) ist
+standardmäßig aus. Aktivieren nur lokal mit `FLASK_DEBUG=1`; `HOST=0.0.0.0`
+macht den Server im LAN erreichbar - nie beides zusammen.
 
 ## Tests
 
@@ -53,8 +57,11 @@ pytest tests/
 - `kontrakte`, `termine`, `hinweise`: Cross-Repo-Konsistenzchecks,
   Fristen-Timeline und dokumentierte bewusste Entscheidungen
 
-Optional: Mit der Umgebungsvariable `GITHUB_TOKEN` werden GitHub-Abfragen
-authentifiziert (höheres Rate-Limit).
+Empfohlen: Mit der Umgebungsvariable `GITHUB_TOKEN` werden GitHub-Abfragen
+authentifiziert. Ohne Token gilt das Limit von 60 Requests/h pro IP - bei
+geteilten Egress-IPs (Vercel) ist das schnell erschöpft und die GitHub-Checks
+laufen auf HTTP 403. Ein Fine-grained Token ohne Berechtigungen reicht
+(nur öffentliche Repos).
 
 ## API-Endpoints
 
@@ -65,8 +72,11 @@ authentifiziert (höheres Rate-Limit).
 | `GET /api/system_status` | Zusammenfassung für das Dashboard |
 | `GET /api/versions` | Rohdaten aus `versions.json` |
 
-Die Ergebnisse werden serverseitig 5 Minuten gecacht (ein gemeinsamer Cache
-für alle drei Daten-Endpoints), das Frontend cacht zusätzlich per
+Die Ergebnisse werden serverseitig 5 Minuten im Speicher gecacht (ein
+gemeinsamer Cache für alle drei Daten-Endpoints; bei parallelen Requests auf
+leeren Cache fragt nur einer die Upstream-APIs ab). Der gesamte Abruf hat ein
+Budget von 8 s, langsamere Quellen erscheinen als Timeout-Fehler. Das
+Frontend cacht zusätzlich per
 Stale-While-Revalidate in `localStorage`. API-Antworten tragen einen ETag;
 ein Conditional GET mit passendem `If-None-Match` liefert 304 ohne Body.
 "Aktualisieren" im Frontend erzwingt die Revalidierung, die vorhandenen

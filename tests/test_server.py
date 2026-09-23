@@ -17,8 +17,8 @@ def reset_versions_cache():
 
 
 @pytest.fixture(autouse=True)
-def reset_flask_cache():
-    """Reset Flask-Caching before each test."""
+def reset_data_cache():
+    """Reset the in-memory data cache before each test."""
     server.cache.clear()
 
 
@@ -47,6 +47,14 @@ def mock_versions():
             "puppetlabs-stdlib": "9.7.0"
         }
     }
+
+
+def _forge_release(version=None, deprecated_at=None):
+    """Antwort von /v3/releases?module=...&limit=1 (neueste Release)."""
+    release = {'module': {'deprecated_at': deprecated_at}}
+    if version is not None:
+        release['version'] = version
+    return {'results': [release]}
 
 
 def _item(**overrides):
@@ -207,10 +215,7 @@ def test_fetch_single_module_current():
     """Modul wird als 'current' erkannt wenn Versionen übereinstimmen."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {'version': '9.7.0'},
-        'deprecated_at': None
-    }
+    mock_response.json.return_value = _forge_release('9.7.0')
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('puppetlabs-stdlib', '9.7.0')
@@ -224,10 +229,7 @@ def test_fetch_single_module_outdated():
     """Modul wird als 'outdated' erkannt bei Versionsunterschied."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {'version': '10.0.0'},
-        'deprecated_at': None
-    }
+    mock_response.json.return_value = _forge_release('10.0.0')
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('puppetlabs-stdlib', '9.7.0')
@@ -240,10 +242,7 @@ def test_fetch_single_module_deprecated():
     """Deprecated-Status wird korrekt erkannt."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {'version': '9.7.0'},
-        'deprecated_at': '2024-01-01'
-    }
+    mock_response.json.return_value = _forge_release('9.7.0', deprecated_at='2024-01-01')
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('old-module', '9.7.0')
@@ -255,10 +254,7 @@ def test_fetch_single_module_deprecated_and_outdated():
     """Deprecated + outdated: deprecated wird korrekt gesetzt."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {'version': '10.0.0'},
-        'deprecated_at': '2024-01-01'
-    }
+    mock_response.json.return_value = _forge_release('10.0.0', deprecated_at='2024-01-01')
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('old-module', '9.0.0')
@@ -326,10 +322,7 @@ def test_fetch_single_module_url_format():
     """Modul-URL wird korrekt formatiert (- zu /)."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {'version': '1.0.0'},
-        'deprecated_at': None
-    }
+    mock_response.json.return_value = _forge_release('1.0.0')
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('puppetlabs-stdlib', '1.0.0')
@@ -341,10 +334,7 @@ def test_fetch_single_module_preserves_name():
     """Modul-Name wird im Ergebnis beibehalten."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {'version': '1.0.0'},
-        'deprecated_at': None
-    }
+    mock_response.json.return_value = _forge_release('1.0.0')
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('puppet-archive', '8.1.0')
@@ -353,27 +343,45 @@ def test_fetch_single_module_preserves_name():
     assert result['serverVersion'] == '8.1.0'
 
 
-def test_fetch_single_module_missing_current_release():
-    """Fehlende current_release führt zu unknown Status."""
+def test_fetch_single_module_not_found():
+    """Unbekanntes Modul: Forge liefert 200 mit leerer Liste -> error."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {'deprecated_at': None}
+    mock_response.json.return_value = {'results': []}
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('test-module', '1.0.0')
 
-    assert result['status'] == 'unknown'
+    assert result['status'] == 'error'
+    assert result['error'] == 'Modul nicht gefunden'
     assert result['forgeVersion'] == 'N/A'
 
 
-def test_fetch_single_module_missing_version_in_release():
-    """Fehlende version in current_release führt zu unknown Status."""
+def test_fetch_single_module_uses_slim_releases_endpoint():
+    """Forge-Abfrage nutzt /v3/releases mit limit=1 statt /v3/modules
+    (der Modul-Endpoint liefert README/Changelog, ~330 KB pro Modul)."""
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'current_release': {},
-        'deprecated_at': None
-    }
+    mock_response.json.return_value = _forge_release('9.7.0')
+
+    with patch.object(server.requests.Session, 'get', return_value=mock_response) as get:
+        server._fetch_single_module('puppetlabs-stdlib', '9.7.0')
+
+    url = get.call_args.args[0]
+    params = get.call_args.kwargs['params']
+    assert url == 'https://forgeapi.puppet.com/v3/releases'
+    assert params['module'] == 'puppetlabs-stdlib'
+    assert params['limit'] == 1
+    assert params['sort_by'] == 'version'
+    for field in ('readme', 'changelog', 'reference'):
+        assert field in params['exclude_fields'].split()
+
+
+def test_fetch_single_module_missing_version_in_release():
+    """Fehlende version in der Release führt zu unknown Status."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = _forge_release()
 
     with patch.object(server.requests.Session, 'get', return_value=mock_response):
         result = server._fetch_single_module('test-module', '1.0.0')
@@ -697,8 +705,16 @@ def test_get_http_session_has_retry_adapter():
     adapter = session.get_adapter('https://example.com')
     assert isinstance(adapter, server.HTTPAdapter)
     assert adapter.max_retries.total == 1
-    assert 429 in adapter.max_retries.status_forcelist
     assert 503 in adapter.max_retries.status_forcelist
+
+
+def test_get_http_session_ignores_retry_after():
+    """Retry-After wird nicht befolgt: urllib3 würde sonst bis zu 6h
+    schlafen und den Worker blockieren. 429 wird nicht wiederholt."""
+    session = server._get_http_session()
+    retry = session.get_adapter('https://example.com').max_retries
+    assert retry.respect_retry_after_header is False
+    assert 429 not in retry.status_forcelist
 
 
 def test_get_http_session_retry_includes_500():
@@ -759,8 +775,7 @@ def test_fetch_all_data_returns_both(mock_versions, mock_inventory):
     mock_module = MagicMock()
     mock_module.status_code = 200
     mock_module.json.return_value = {
-        'current_release': {'version': '9.7.0'},
-        'deprecated_at': None,
+        'results': [{'version': '9.7.0', 'module': {'deprecated_at': None}}],
         'tag_name': 'v1.0.0'
     }
 
@@ -783,8 +798,7 @@ def test_fetch_all_data_preserves_item_order(mock_versions, mock_inventory):
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        'current_release': {'version': '9.7.0'},
-        'deprecated_at': None,
+        'results': [{'version': '9.7.0', 'module': {'deprecated_at': None}}],
         'tag_name': 'v1.0.0'
     }
     with patch.object(server, 'load_versions', return_value=mock_versions), \
@@ -811,8 +825,7 @@ def test_fetch_all_data_multiple_items(multi_module_versions, mock_inventory):
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        'current_release': {'version': '1.0.0'},
-        'deprecated_at': None,
+        'results': [{'version': '1.0.0', 'module': {'deprecated_at': None}}],
         'tag_name': 'v1.0.0',
         'version': '1.0.0'
     }
@@ -830,10 +843,7 @@ def test_fetch_all_data_handles_mixed_errors(mock_versions, mock_inventory):
     """fetch_all_data: Ein Fehler beeinflusst nicht die anderen."""
     mock_module = MagicMock()
     mock_module.status_code = 200
-    mock_module.json.return_value = {
-        'current_release': {'version': '9.7.0'},
-        'deprecated_at': None
-    }
+    mock_module.json.return_value = _forge_release('9.7.0')
 
     def side_effect(url, **kwargs):
         if 'forgeapi' in url:
@@ -856,9 +866,94 @@ def test_fetch_all_data_handles_mixed_errors(mock_versions, mock_inventory):
 # UNIT TESTS - Worker Pool Configuration
 # ============================================================================
 
-def test_max_workers_is_twenty():
-    """Thread Pool hat 20 Worker für maximale Parallelisierung."""
-    assert server._MAX_WORKERS == 20
+def test_max_workers_covers_all_http_checks():
+    """Alle HTTP-Checks laufen in einer Welle (Worker >= Anzahl Checks)."""
+    versions = server.load_versions()
+    inventory = server.load_avd_inventory()
+    http_checks = (len(versions.get('puppet_modules', {}))
+                   + len(versions.get('github_releases', {}))
+                   + sum(1 for i in inventory['items']
+                         if i.get('art') != 'intern'
+                         and (i.get('quelle') or {}).get('typ') in server._AUTO_SOURCE_TYPES))
+    assert server._MAX_WORKERS >= http_checks
+
+
+def test_fetch_all_data_deadline_marks_pending_as_timeout(mock_inventory):
+    """Checks, die das Gesamtbudget reißen, werden als Timeout gemeldet
+    statt die Antwort zu blockieren."""
+    release = threading.Event()
+
+    def slow_module(name, version):
+        release.wait(5)
+        return server._forge_result(name, version)
+
+    try:
+        with patch.object(server, 'load_versions',
+                          return_value={'puppet_modules': {'slow-mod': '1.0.0'}}), \
+             patch.object(server, 'load_avd_inventory', return_value=mock_inventory), \
+             patch.object(server, '_fetch_single_module', side_effect=slow_module), \
+             patch.object(server, '_FETCH_DEADLINE', 0.2), \
+             patch.object(server.requests.Session, 'get',
+                          return_value=_response(json_data={'tag_name': 'v1.0.0'})):
+            start = time.monotonic()
+            result = server.fetch_all_data()
+            elapsed = time.monotonic() - start
+    finally:
+        release.set()
+
+    assert elapsed < 2
+    assert result['modules'][0]['name'] == 'slow-mod'
+    assert result['modules'][0]['status'] == 'error'
+    assert result['modules'][0]['error'] == 'Timeout'
+    assert result['modules'][0]['url'] == 'https://forge.puppet.com/modules/slow/mod'
+    # Schnelle Checks sind trotzdem vollständig und in Inventar-Reihenfolge
+    assert [i['id'] for i in result['avd']['items']] == ['a', 'b']
+    assert result['avd']['items'][0]['status'] == 'current'
+
+
+def test_fetch_all_data_single_flight(mock_versions, mock_inventory):
+    """Parallele Requests bei leerem Cache lösen nur einen Fan-out aus."""
+    calls = []
+    gate = threading.Event()
+
+    def slow_uncached():
+        calls.append(1)
+        gate.wait(2)
+        return {'modules': [], 'avd': {'items': []}, 'fetched_at': 'x'}
+
+    with patch.object(server, '_fetch_all_data_uncached', side_effect=slow_uncached):
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(server.fetch_all_data()))
+                   for _ in range(5)]
+        for t in threads:
+            t.start()
+        time.sleep(0.1)
+        gate.set()
+        for t in threads:
+            t.join(3)
+
+    assert len(calls) == 1
+    assert len(results) == 5
+
+
+def test_cache_expires_after_ttl():
+    """Nach Ablauf der TTL wird neu geladen."""
+    c = server._SingleFlightCache(ttl=0)
+    values = iter([1, 2])
+    assert c.get_or_compute(lambda: next(values)) == 1
+    assert c.get_or_compute(lambda: next(values)) == 2
+
+
+def test_cache_does_not_store_exceptions():
+    """Exception beim Laden wird nicht gecacht, der nächste Aufruf lädt neu."""
+    c = server._SingleFlightCache(ttl=300)
+
+    def boom():
+        raise RuntimeError('upstream kaputt')
+
+    with pytest.raises(RuntimeError):
+        c.get_or_compute(boom)
+    assert c.get_or_compute(lambda: 'ok') == 'ok'
 
 
 # ============================================================================
@@ -1198,6 +1293,31 @@ def test_serve_unknown_path_returns_html(client):
     assert b'Version Tracker' in res.data
 
 
+def test_serve_no_file_existence_oracle(client):
+    """Pfade außerhalb von public/ liefern dieselbe 404-Antwort, egal ob
+    die Datei existiert (server.py) oder nicht."""
+    existing = client.get('/..%2fserver.py')
+    missing = client.get('/..%2fdoes-not-exist.py')
+    assert existing.status_code == missing.status_code == 404
+    assert existing.data == missing.data
+    assert b'import' not in existing.data
+
+
+def test_serve_static_file_from_public():
+    """Der Catch-all liefert weitere Dateien unter public/ aus."""
+    with server.app.test_request_context():
+        res = server.serve('styles/shared.css')
+    assert res.status_code == 200
+    res.close()
+
+
+def test_serve_directory_returns_404(client):
+    """Verzeichnisse unter public/ sind keine Dateien -> 404-Fallback."""
+    res = client.get('/scripts')
+    assert res.status_code == 404
+    assert b'Version Tracker' in res.data
+
+
 def test_favicon_returns_svg(client):
     """GET /favicon.ico gibt SVG zurück."""
     res = client.get('/favicon.ico')
@@ -1364,11 +1484,12 @@ def test_html_pages_no_explicit_cache(client):
 # INTEGRATION TESTS - RESOURCE HINTS (autoresearch-Pattern)
 # ============================================================================
 
-def test_index_has_dns_prefetch(client):
-    """Index-Seite enthält DNS-Prefetch für externe APIs."""
-    res = client.get('/')
-    assert b'dns-prefetch' in res.data
-    assert b'forgeapi.puppet.com' in res.data
+def test_no_dns_prefetch_for_server_side_apis(client):
+    """Kein DNS-Prefetch für forgeapi: den Host kontaktiert nur der Server,
+    der Browser nie (CSP connect-src 'self') - der Lookup wäre verschwendet."""
+    for page in ('/', '/puppet.html'):
+        res = client.get(page)
+        assert b'forgeapi.puppet.com' not in res.data
 
 
 def test_index_has_page_prefetch(client):
@@ -1377,13 +1498,6 @@ def test_index_has_page_prefetch(client):
     assert b'prefetch' in res.data
     assert b'puppet.html' in res.data
     assert b'avd.html' in res.data
-
-
-def test_puppet_page_has_dns_prefetch(client):
-    """Puppet-Seite enthält DNS-Prefetch für Forge API."""
-    res = client.get('/puppet.html')
-    assert b'dns-prefetch' in res.data
-    assert b'forgeapi.puppet.com' in res.data
 
 
 # ============================================================================

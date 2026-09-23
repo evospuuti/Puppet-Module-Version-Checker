@@ -5,15 +5,18 @@ import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
+from functools import partial
 from datetime import datetime, timezone
+from urllib.parse import quote
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
-from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from werkzeug.exceptions import NotFound
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # ============================================================================
@@ -38,13 +41,6 @@ CORS(app, origins=[
     'http://localhost:5000',
     'http://127.0.0.1:5000'
 ])
-
-# Cache-Konfiguration - FileSystemCache für bessere Persistenz auf Vercel
-cache = Cache(app, config={
-    "CACHE_TYPE": "FileSystemCache",
-    "CACHE_DIR": os.path.join(os.environ.get('TMPDIR', '/tmp'), 'version-checker-cache'),
-    "CACHE_DEFAULT_TIMEOUT": 300
-})
 
 # Rate-Limiting zum Schutz der API-Endpoints
 limiter = Limiter(
@@ -114,7 +110,7 @@ def load_versions():
 
     versions_file = os.path.join(os.path.dirname(__file__), 'versions.json')
     try:
-        with open(versions_file, 'r') as f:
+        with open(versions_file, 'r', encoding='utf-8') as f:
             _versions_cache = json.load(f)
             return _versions_cache
     except FileNotFoundError:
@@ -138,7 +134,7 @@ def load_avd_inventory():
 
     inventory_file = os.path.join(os.path.dirname(__file__), 'avd_inventory.json')
     try:
-        with open(inventory_file, 'r') as f:
+        with open(inventory_file, 'r', encoding='utf-8') as f:
             _inventory_cache = json.load(f)
             return _inventory_cache
     except FileNotFoundError:
@@ -227,12 +223,16 @@ def _get_http_session():
         # Exponential Backoff Retry (autoresearch-Pattern: retry with 2^attempt backoff)
         # Nur 1 Retry mit kurzem Backoff: worst case bleibt ein einzelner
         # Check unter ~9s statt >30s (3 Retries mit exponentiellem Backoff)
+        # Retry-After wird ignoriert: urllib3 würde sonst bis zu 6h schlafen
+        # (retry_after_max) und den Worker-Thread blockieren. 429 wird nicht
+        # wiederholt - ein sofortiger Retry ohne Wartezeit bringt nichts.
         retry_strategy = Retry(
             total=1,
             backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
+            status_forcelist=[500, 502, 503, 504],
             allowed_methods=["GET"],
             raise_on_status=False,
+            respect_retry_after_header=False,
         )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
@@ -249,31 +249,62 @@ def _get_http_session():
 # EINZELNE MODULE/PROVIDER ABRUFEN (für parallele Ausführung)
 # ============================================================================
 
-def _fetch_single_module(module_name, installed_version):
-    """Holt Daten für ein einzelnes Puppet-Modul vom Forge."""
-    module_data = {
-        'name': module_name,
-        'serverVersion': installed_version,
+def _module_result(name, version, url):
+    """Basis-Ergebnis für Puppet-Module und GitHub-Releases."""
+    return {
+        'name': name,
+        'serverVersion': version,
         'forgeVersion': 'N/A',
         'status': 'unknown',
         'deprecated': False,
-        'url': f'https://forge.puppet.com/modules/{module_name.replace("-", "/", 1)}'
+        'url': url,
     }
+
+
+# Neueste Release (höchste Version = current_release des Moduls) statt
+# /v3/modules/<slug>: der Modul-Endpoint liefert README, Changelog, Reference
+# und die komplette Release-Liste mit (~330 KB pro Modul), hier ~2 KB.
+_FORGE_RELEASES_URL = 'https://forgeapi.puppet.com/v3/releases'
+_FORGE_EXCLUDE_FIELDS = 'readme changelog license reference metadata tasks plans'
+
+
+def _forge_result(module_name, installed_version):
+    return _module_result(
+        module_name, installed_version,
+        f'https://forge.puppet.com/modules/{module_name.replace("-", "/", 1)}')
+
+
+def _github_result(repo_name, tracked_version):
+    return _module_result(repo_name, tracked_version,
+                          f'https://github.com/{repo_name}')
+
+
+def _fetch_single_module(module_name, installed_version):
+    """Holt Daten für ein einzelnes Puppet-Modul vom Forge."""
+    module_data = _forge_result(module_name, installed_version)
 
     session = _get_http_session()
     try:
-        url = f'https://forgeapi.puppet.com/v3/modules/{module_name}'
-        response = session.get(url, timeout=_REQUEST_TIMEOUT)
+        params = {'module': module_name, 'limit': 1, 'sort_by': 'version',
+                  'exclude_fields': _FORGE_EXCLUDE_FIELDS}
+        response = session.get(_FORGE_RELEASES_URL, params=params,
+                               timeout=_REQUEST_TIMEOUT)
 
         if response.status_code == 200:
-            data = response.json()
+            results = response.json().get('results') or []
+            if not results:
+                # Unbekanntes Modul: Forge antwortet mit 200 und leerer Liste
+                module_data['status'] = 'error'
+                module_data['error'] = 'Modul nicht gefunden'
+                return module_data
 
-            if 'current_release' in data and 'version' in data['current_release']:
-                forge_version = data['current_release']['version']
+            release = results[0]
+            forge_version = release.get('version')
+            if forge_version:
                 module_data['forgeVersion'] = forge_version
                 module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
 
-            module_data['deprecated'] = data.get('deprecated_at') is not None
+            module_data['deprecated'] = (release.get('module') or {}).get('deprecated_at') is not None
         else:
             logger.warning("Forge API status %d for %s", response.status_code, module_name)
             module_data['status'] = 'error'
@@ -295,14 +326,7 @@ def _fetch_single_module(module_name, installed_version):
 
 def _fetch_single_github_release(repo_name, tracked_version):
     """Holt die neueste Release-Version eines GitHub-Repos."""
-    release_data = {
-        'name': repo_name,
-        'serverVersion': tracked_version,
-        'forgeVersion': 'N/A',
-        'status': 'unknown',
-        'deprecated': False,
-        'url': f'https://github.com/{repo_name}'
-    }
+    release_data = _github_result(repo_name, tracked_version)
 
     session = _get_http_session()
     headers = {'Accept': 'application/vnd.github+json'}
@@ -376,10 +400,10 @@ def _fetch_latest_for_source(quelle):
                     return tag.lstrip('v'), None
                 return None, 'Kein tag_name in der Antwort'
         else:
-            path = quelle.get('path', '')
-            url = (f'https://api.github.com/repos/{ref}/commits'
-                   f'?path={path}&per_page=1')
-            response = session.get(url, timeout=_REQUEST_TIMEOUT, headers=headers)
+            url = f'https://api.github.com/repos/{ref}/commits'
+            params = {'path': quelle.get('path', ''), 'per_page': 1}
+            response = session.get(url, params=params,
+                                   timeout=_REQUEST_TIMEOUT, headers=headers)
             if response.status_code == 200:
                 commits = response.json()
                 if commits and commits[0].get('sha'):
@@ -406,7 +430,7 @@ def _fetch_latest_for_source(quelle):
 
     elif typ == 'choco':
         url = ("https://community.chocolatey.org/api/v2/Packages()"
-               f"?$filter=Id%20eq%20%27{ref}%27%20and%20IsLatestVersion")
+               f"?$filter=Id%20eq%20%27{quote(ref, safe='')}%27%20and%20IsLatestVersion")
         response = session.get(url, timeout=_REQUEST_TIMEOUT)
         if response.status_code == 200:
             m = _ODATA_VERSION_RE.search(response.text)
@@ -416,7 +440,7 @@ def _fetch_latest_for_source(quelle):
 
     elif typ == 'psgallery':
         url = ("https://www.powershellgallery.com/api/v2/FindPackagesById()"
-               f"?id=%27{ref}%27&$filter=IsLatestVersion")
+               f"?id=%27{quote(ref, safe='')}%27&$filter=IsLatestVersion")
         response = session.get(url, timeout=_REQUEST_TIMEOUT)
         if response.status_code == 200:
             m = _ODATA_VERSION_RE.search(response.text)
@@ -441,22 +465,17 @@ def _fetch_latest_for_source(quelle):
     return None, f'HTTP {response.status_code}'
 
 
-def _check_inventory_item(item):
-    """Prüft einen Eintrag des AVD-Inventars gegen seine Latest-Quelle.
-
-    Status-Werte: current, outdated, suppressed, floating, manual, azure,
-    intern, error. `art` steuert die Vergleichslogik, `quelle.typ` den Poller.
-    """
+def _inventory_result(item):
+    """Basis-Ergebnis eines Inventar-Eintrags (noch ohne Latest-Check)."""
     quelle = item.get('quelle', {}) or {}
-    art = item.get('art', 'intern')
-    result = {
+    return {
         'id': item.get('id', ''),
         'kategorie': item.get('kategorie', ''),
         'artefakt': item.get('artefakt', ''),
         'repo': item.get('repo', []),
         'ist': item.get('ist'),
         'constraint': item.get('constraint'),
-        'art': art,
+        'art': item.get('art', 'intern'),
         'artLabel': item.get('artLabel', ''),
         'fundorte': item.get('fundorte', []),
         'quelle': {'typ': quelle.get('typ', 'intern'), 'ref': quelle.get('ref')},
@@ -466,6 +485,17 @@ def _check_inventory_item(item):
         'latest': item.get('known_latest', '-'),
         'status': 'intern',
     }
+
+
+def _check_inventory_item(item):
+    """Prüft einen Eintrag des AVD-Inventars gegen seine Latest-Quelle.
+
+    Status-Werte: current, outdated, suppressed, floating, manual, azure,
+    intern, error. `art` steuert die Vergleichslogik, `quelle.typ` den Poller.
+    """
+    quelle = item.get('quelle', {}) or {}
+    art = item.get('art', 'intern')
+    result = _inventory_result(item)
 
     typ = quelle.get('typ', 'intern')
 
@@ -533,9 +563,16 @@ def _check_inventory_item(item):
 # DATA FETCHING LOGIC (cached, parallel, optimized worker count)
 # ============================================================================
 
-# autoresearch-Pattern: Mehr Worker für bessere Parallelisierung
-# (analog zu multiprocessing.Pool für parallele Shard-Downloads)
-_MAX_WORKERS = 20
+# Mindestens so viele Worker wie HTTP-Checks (aktuell 32: Forge, GitHub,
+# Auto-Quellen des Inventars), damit alle Upstream-Calls in einer Welle
+# laufen statt in zwei nacheinander. Threads entstehen erst bei Bedarf.
+_MAX_WORKERS = 40
+
+# Gesamtbudget für den Fan-out. Ein einzelner Call kann trotz
+# _REQUEST_TIMEOUT länger dauern (Retry; der Read-Timeout gilt pro recv,
+# nicht gesamt). Was nach Ablauf nicht fertig ist, geht als Timeout-Fehler
+# in die Antwort, statt die Function ins Vercel-Limit laufen zu lassen.
+_FETCH_DEADLINE = 8
 
 # Geteilter Executor: Threads (und damit deren thread-lokale Sessions samt
 # Connection Pools) überleben einzelne Requests. Ein per-Request erzeugter
@@ -553,14 +590,63 @@ def fetch_avd_data():
     return fetch_all_data()['avd']
 
 # ============================================================================
+# IN-MEMORY CACHE (Single-Flight)
+# ============================================================================
+# Bewusst kein Flask-Caching FileSystemCache: der pickelt Werte in ein
+# vorhersagbares Verzeichnis unter /tmp. Wer es vorab anlegt, kann dort
+# manipulierte Pickles ablegen (Code-Ausführung beim Laden). Eine warme
+# Vercel-Instanz behält Modul-Globals ohnehin über Invocations hinweg.
+
+class _SingleFlightCache:
+    """TTL-Cache für einen einzelnen Wert.
+
+    Bei einem Miss rechnet genau ein Thread neu; parallele Requests warten
+    auf dessen Ergebnis, statt den kompletten Upstream-Fan-out mehrfach
+    anzustoßen (Cache-Stampede).
+    """
+
+    def __init__(self, ttl):
+        self._ttl = ttl
+        self._lock = threading.Lock()
+        self._entry = None  # (expires_at, value)
+
+    def _fresh(self):
+        entry = self._entry
+        if entry and entry[0] > time.monotonic():
+            return entry
+        return None
+
+    def get_or_compute(self, compute):
+        entry = self._fresh()
+        if entry:
+            return entry[1]
+        with self._lock:
+            entry = self._fresh()
+            if entry:
+                return entry[1]
+            value = compute()
+            self._entry = (time.monotonic() + self._ttl, value)
+            return value
+
+    def clear(self):
+        self._entry = None
+
+
+cache = _SingleFlightCache(ttl=300)
+
+# ============================================================================
 # COMBINED DATA FETCH (autoresearch-Pattern: prefetch/overlap I/O)
 # ============================================================================
 # Einziger gecachter Fetch: /api/modules, /api/avd-components und
 # /api/system_status teilen sich denselben Cache-Eintrag, statt dieselben
 # Upstream-APIs mehrfach abzufragen.
 
-@cache.cached(timeout=300, key_prefix='all_data')
 def fetch_all_data():
+    """Holt Module UND das AVD-Inventar (5 Minuten gecacht)."""
+    return cache.get_or_compute(_fetch_all_data_uncached)
+
+
+def _fetch_all_data_uncached():
     """Holt Module UND das AVD-Inventar parallel in einem einzigen Aufruf.
 
     autoresearch-Pattern: Überlappung von I/O-Operationen.
@@ -576,25 +662,43 @@ def fetch_all_data():
     modules = []
     avd_results = {}
 
+    # future -> (Art, Index im Inventar, Builder für das Timeout-Ergebnis)
     all_futures = {
-        _executor.submit(_fetch_single_module, name, version): ('module', None)
+        _executor.submit(_fetch_single_module, name, version):
+            ('module', None, partial(_forge_result, name, version))
         for name, version in installed_modules.items()
     }
     all_futures.update({
-        _executor.submit(_fetch_single_github_release, name, version): ('module', None)
+        _executor.submit(_fetch_single_github_release, name, version):
+            ('module', None, partial(_github_result, name, version))
         for name, version in github_releases.items()
     })
     all_futures.update({
-        _executor.submit(_check_inventory_item, item): ('avd', idx)
+        _executor.submit(_check_inventory_item, item):
+            ('avd', idx, partial(_inventory_result, item))
         for idx, item in enumerate(inventory_items)
     })
 
-    for future in as_completed(all_futures):
-        kind, idx = all_futures[future]
+    def collect(future, result):
+        kind, idx, _ = all_futures.pop(future)
         if kind == 'module':
-            modules.append(future.result())
+            modules.append(result)
         else:
-            avd_results[idx] = future.result()
+            avd_results[idx] = result
+
+    try:
+        for future in as_completed(all_futures, timeout=_FETCH_DEADLINE):
+            collect(future, future.result())
+    except FuturesTimeoutError:
+        for future in list(all_futures):
+            if future.done():
+                collect(future, future.result())
+                continue
+            future.cancel()
+            result = all_futures[future][2]()
+            result['status'] = 'error'
+            result['error'] = 'Timeout'
+            collect(future, result)
 
     avd = {
         'items': [avd_results[i] for i in sorted(avd_results)],
@@ -776,9 +880,16 @@ def serve(path):
         filename = 'index.html' if path == '' else path
         return send_from_directory('public', filename)
 
-    # Statische Dateien (CSS, JS, Bilder) direkt ausliefern
-    if path and os.path.exists(os.path.join('public', path)):
-        return send_from_directory('public', path)
+    # Statische Dateien (CSS, JS, Bilder) direkt ausliefern. Kein
+    # os.path.exists vorab: das lief relativ zum CWD statt zu public/ und
+    # verriet über die abweichende 404-Antwort, ob eine Datei außerhalb von
+    # public/ existiert (z.B. /..%2fserver.py). send_from_directory prüft
+    # Traversal selbst.
+    if path:
+        try:
+            return send_from_directory('public', path)
+        except NotFound:
+            pass
 
     return send_from_directory('public', 'index.html'), 404
 
@@ -788,4 +899,9 @@ def serve(path):
 # Die Flask App wird automatisch von Vercel als WSGI-App erkannt.
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Nur lokal. Der Werkzeug-Debugger bietet eine interaktive Python-Konsole
+    # (Code-Ausführung) - daher standardmäßig aus und nur auf localhost.
+    # Aktivieren mit FLASK_DEBUG=1, im LAN erreichbar mit HOST=0.0.0.0.
+    app.run(debug=os.environ.get('FLASK_DEBUG') == '1',
+            host=os.environ.get('HOST', '127.0.0.1'),
+            port=int(os.environ.get('PORT', '5000')))

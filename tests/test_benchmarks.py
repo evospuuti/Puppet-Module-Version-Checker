@@ -33,8 +33,7 @@ def _mock_forge_response(version='9.7.0', deprecated=None):
     m = MagicMock()
     m.status_code = 200
     m.json.return_value = {
-        'current_release': {'version': version},
-        'deprecated_at': deprecated
+        'results': [{'version': version, 'module': {'deprecated_at': deprecated}}]
     }
     return m
 
