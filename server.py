@@ -481,6 +481,10 @@ def get_modules():
 # API ROUTES - SYSTEM STATUS (optimized: parallel fetch)
 # ============================================================================
 
+def _plural(count, singular, plural):
+    return f"{count} {singular if count == 1 else plural}"
+
+
 @app.route('/api/system_status', methods=['GET'])
 @limiter.limit("30 per minute")
 def get_system_status():
@@ -515,11 +519,11 @@ def get_system_status():
         # "Alle Module aktuell" durchgehen
         details = []
         if deprecated_count:
-            details.append(f"{deprecated_count} Module deprecated")
+            details.append(_plural(deprecated_count, 'Modul', 'Module') + " deprecated")
         if error_count:
-            details.append(f"{error_count} Checks fehlgeschlagen")
+            details.append(_plural(error_count, 'Check', 'Checks') + " fehlgeschlagen")
         if outdated_count:
-            details.append(f"{outdated_count} Updates verfügbar")
+            details.append(_plural(outdated_count, 'Update', 'Updates') + " verfügbar")
 
         if deprecated_count or error_count:
             puppet_status = {"status": "Warnung", "details": ", ".join(details)}

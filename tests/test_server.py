@@ -732,7 +732,7 @@ def test_api_system_status_detects_outdated(client):
 
     data = res.get_json()
     assert data['puppet']['status'] == 'Info'
-    assert '1 Updates' in data['puppet']['details']
+    assert data['puppet']['details'] == '1 Update verfügbar'
 
 
 def test_api_system_status_detects_multiple_outdated(client):
@@ -800,7 +800,7 @@ def test_api_system_status_failed_checks_not_ok(client):
 
     data = res.get_json()
     assert data['puppet']['status'] == 'Warnung'
-    assert data['puppet']['details'] == '1 Checks fehlgeschlagen'
+    assert data['puppet']['details'] == '1 Check fehlgeschlagen'
 
 
 def test_api_system_status_combines_details(client):
@@ -819,7 +819,7 @@ def test_api_system_status_combines_details(client):
     data = res.get_json()
     assert data['puppet']['status'] == 'Warnung'
     assert data['puppet']['details'] == (
-        '1 Module deprecated, 1 Checks fehlgeschlagen, 2 Updates verfügbar')
+        '1 Modul deprecated, 1 Check fehlgeschlagen, 2 Updates verfügbar')
 
 
 def test_api_versions_returns_json(client):
