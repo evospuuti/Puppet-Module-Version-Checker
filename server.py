@@ -7,8 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import partial
 from datetime import datetime, timezone
-from flask import Flask, jsonify, request, send_from_directory, Response
-from flask_cors import CORS
+from flask import Flask, jsonify, request, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import requests
@@ -33,12 +32,8 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 app.json.compact = True
 app.json.ensure_ascii = False
 
-# CORS nur für eigene Origin erlauben (Vercel-Domain + lokale Entwicklung)
-CORS(app, origins=[
-    'https://puppet-module-version-checker.vercel.app',
-    'http://localhost:5000',
-    'http://127.0.0.1:5000'
-])
+# Kein CORS: Frontend und API laufen auf derselben Origin. Ohne
+# Access-Control-*-Header dürfen fremde Seiten die API-Antworten nicht lesen.
 
 # Rate-Limiting zum Schutz der API-Endpoints
 limiter = Limiter(
@@ -56,22 +51,38 @@ logger = logging.getLogger(__name__)
 # SECURITY HEADERS
 # ============================================================================
 
+# base-uri, form-action und frame-ancestors fallen nicht auf default-src
+# zurück und müssen explizit gesetzt werden. Muss mit vercel.json
+# übereinstimmen (dort für die statisch ausgelieferten HTML-Seiten).
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors 'none'"
+)
+
+_SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Content-Security-Policy': _CSP,
+    # Fenster-Isolation gegen fremde Opener; Antworten nur für die eigene
+    # Origin einbettbar (kein Auslesen per <script>/<img> von Fremdseiten)
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+}
+
+
 @app.after_request
 def add_security_headers(response):
     """Sicherheits- und Cache-Header für alle Responses."""
-    # Security Headers
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
-    response.headers['Content-Security-Policy'] = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self'; "
-        "img-src 'self' data:; "
-        "connect-src 'self'; "
-        "frame-ancestors 'none'"
-    )
+    response.headers.update(_SECURITY_HEADERS)
 
     # Cache-Header für statische Dateien
     if request.path.startswith('/styles/') or request.path.startswith('/scripts/'):
@@ -244,10 +255,11 @@ def _fetch_single_github_release(repo_name, tracked_version):
     release_data = _github_result(repo_name, tracked_version)
 
     session = _get_http_session()
-    headers = {'Accept': 'application/vnd.github+json'}
+    headers = {'Accept': 'application/vnd.github+json',
+               'X-GitHub-Api-Version': '2022-11-28'}
     gh_token = os.environ.get('GITHUB_TOKEN')
     if gh_token:
-        headers['Authorization'] = f'token {gh_token}'
+        headers['Authorization'] = f'Bearer {gh_token}'
 
     try:
         url = f'https://api.github.com/repos/{repo_name}/releases/latest'
@@ -407,6 +419,11 @@ def _fetch_all_data_uncached():
             result['error'] = 'Timeout'
             modules.append(result)
 
+    # as_completed liefert in Fertigstellungs-Reihenfolge. Ohne Sortierung
+    # wechselt der ETag von /api/modules bei jedem Cache-Refresh, auch wenn
+    # sich nichts geändert hat - Browser bekämen dann 200 statt 304.
+    modules.sort(key=lambda m: m['name'])
+
     return {
         'modules': modules,
         # Zeitpunkt des Upstream-Abrufs: wird im Dashboard als "Aktualisiert"
@@ -464,6 +481,10 @@ def get_modules():
 # API ROUTES - SYSTEM STATUS (optimized: parallel fetch)
 # ============================================================================
 
+def _plural(count, singular, plural):
+    return f"{count} {singular if count == 1 else plural}"
+
+
 @app.route('/api/system_status', methods=['GET'])
 @limiter.limit("30 per minute")
 def get_system_status():
@@ -485,16 +506,29 @@ def get_system_status():
         # Puppet-Analyse
         outdated_count = 0
         deprecated_count = 0
+        error_count = 0
         for module in modules:
             if module.get('deprecated'):
                 deprecated_count += 1
             elif module.get('status') == 'outdated':
                 outdated_count += 1
+            elif module.get('status') == 'error':
+                error_count += 1
 
-        if deprecated_count > 0:
-            puppet_status = {"status": "Warnung", "details": f"{deprecated_count} Module deprecated"}
-        elif outdated_count > 0:
-            puppet_status = {"status": "Info", "details": f"{outdated_count} Updates verfügbar"}
+        # Fehlgeschlagene Checks (Timeout, HTTP 403/5xx) dürfen nicht als
+        # "Alle Module aktuell" durchgehen
+        details = []
+        if deprecated_count:
+            details.append(_plural(deprecated_count, 'Modul', 'Module') + " deprecated")
+        if error_count:
+            details.append(_plural(error_count, 'Check', 'Checks') + " fehlgeschlagen")
+        if outdated_count:
+            details.append(_plural(outdated_count, 'Update', 'Updates') + " verfügbar")
+
+        if deprecated_count or error_count:
+            puppet_status = {"status": "Warnung", "details": ", ".join(details)}
+        elif outdated_count:
+            puppet_status = {"status": "Info", "details": ", ".join(details)}
         else:
             puppet_status = {"status": "OK", "details": "Alle Module aktuell"}
 

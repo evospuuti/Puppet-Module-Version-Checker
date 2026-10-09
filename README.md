@@ -46,7 +46,7 @@ laufen auf HTTP 403. Ein Fine-grained Token ohne Berechtigungen reicht
 | Endpoint | Beschreibung |
 |---|---|
 | `GET /api/modules` | Puppet Module + GitHub Releases mit Forge-/Release-Vergleich |
-| `GET /api/system_status` | Zusammenfassung für das Dashboard |
+| `GET /api/system_status` | Zusammenfassung für das Dashboard (deprecated oder fehlgeschlagene Checks → `Warnung`, nur Updates → `Info`) |
 | `GET /api/versions` | Rohdaten aus `versions.json` |
 
 Die Ergebnisse werden serverseitig 5 Minuten im Speicher gecacht (ein

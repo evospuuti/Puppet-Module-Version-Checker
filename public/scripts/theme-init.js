@@ -1,7 +1,10 @@
-// Theme-Erkennung vor dem ersten Render (verhindert Flash of White)
+// Theme-Erkennung vor dem ersten Render (verhindert Flash of White).
+// localStorage kann werfen (Storage blockiert, Privatmodus) - dann gilt
+// die Systemeinstellung.
 (function() {
-    var t = localStorage.getItem('theme');
-    if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    var t = null;
+    try { t = localStorage.getItem('theme'); } catch (e) {}
+    if (t === 'dark' || (!t && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
     }
 })();

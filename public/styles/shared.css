@@ -7,9 +7,11 @@
     --text-muted: #6c757d;
     --border: #e9ecef;
     --primary: #0066cc;
-    --success: #28a745;
-    --warning: #ffc107;
-    --danger: #dc3545;
+    /* Dunklere Töne im Light-Mode: Kontrast >= 4.5:1 (WCAG AA) auf Weiß
+       und auf den Badge-Hintergründen; #ffc107 auf Weiß lag bei 1.6:1 */
+    --success: #1e7e34;
+    --warning: #9a6700;
+    --danger: #c82333;
     color-scheme: light;
 }
 
