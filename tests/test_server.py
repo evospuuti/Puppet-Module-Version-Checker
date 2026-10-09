@@ -1,8 +1,9 @@
 import json
+import os
 import time
 import threading
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 import server
 
 
@@ -333,6 +334,53 @@ def test_fetch_single_module_default_values():
 
 
 # ============================================================================
+# UNIT TESTS - _fetch_single_github_release
+# ============================================================================
+
+def _github_response(tag='v7.0.1', status=200):
+    response = MagicMock()
+    response.status_code = status
+    response.json.return_value = {'tag_name': tag}
+    return response
+
+
+def test_github_release_uses_bearer_token(monkeypatch):
+    """GITHUB_TOKEN wird als Bearer-Token mit fester API-Version gesendet."""
+    monkeypatch.setenv('GITHUB_TOKEN', 'test-token')
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_github_response()) as get:
+        result = server._fetch_single_github_release('voxpupuli/puppetboard', '7.0.1')
+
+    headers = get.call_args.kwargs['headers']
+    assert headers['Authorization'] == 'Bearer test-token'
+    assert headers['X-GitHub-Api-Version'] == '2022-11-28'
+    assert result['status'] == 'current'
+
+
+def test_github_release_without_token_sends_no_auth(monkeypatch):
+    """Ohne GITHUB_TOKEN kein Authorization-Header."""
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_github_response('v8.0.0')) as get:
+        result = server._fetch_single_github_release('voxpupuli/puppetboard', '7.0.1')
+
+    assert 'Authorization' not in get.call_args.kwargs['headers']
+    assert result['status'] == 'outdated'
+    assert result['forgeVersion'] == '8.0.0'
+
+
+def test_github_release_rate_limited_is_error(monkeypatch):
+    """HTTP 403 (Rate-Limit) wird als Fehler gemeldet."""
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    with patch.object(server.requests.Session, 'get',
+                      return_value=_github_response(status=403)):
+        result = server._fetch_single_github_release('voxpupuli/puppetboard', '7.0.1')
+
+    assert result['status'] == 'error'
+    assert result['error'] == 'HTTP 403'
+
+
+# ============================================================================
 # UNIT TESTS - Connection Pooling (autoresearch-Pattern)
 # ============================================================================
 
@@ -496,6 +544,23 @@ def test_fetch_all_data_handles_mixed_errors():
     assert by_name['puppetlabs-stdlib']['status'] == 'current'
     assert by_name['voxpupuli/puppetboard']['status'] == 'error'
     assert by_name['voxpupuli/puppetboard']['error'] == 'Timeout'
+
+
+def test_fetch_all_data_sorted_by_name(multi_module_versions):
+    """Module kommen nach Name sortiert, unabhängig von der Reihenfolge, in
+    der die parallelen Checks fertig werden (stabiler ETag)."""
+    delays = {'puppetlabs-stdlib': 0.0, 'puppetlabs-apt': 0.05, 'puppet-archive': 0.1}
+
+    def fetch(name, version):
+        time.sleep(delays[name])
+        return server._forge_result(name, version)
+
+    with patch.object(server, 'load_versions', return_value=multi_module_versions), \
+         patch.object(server, '_fetch_single_module', side_effect=fetch):
+        result = server.fetch_all_data()
+
+    names = [m['name'] for m in result['modules']]
+    assert names == sorted(names)
 
 
 # ============================================================================
@@ -722,6 +787,41 @@ def test_api_system_status_error_handling(client):
     assert data['puppet']['status'] == 'Error'
 
 
+def test_api_system_status_failed_checks_not_ok(client):
+    """Fehlgeschlagene Checks werden nicht als 'Alle Module aktuell' gemeldet."""
+    mock_data = {
+        'modules': [
+            {'status': 'current', 'deprecated': False},
+            {'status': 'error', 'deprecated': False, 'error': 'HTTP 403'},
+        ]
+    }
+    with patch.object(server, 'fetch_all_data', return_value=mock_data):
+        res = client.get('/api/system_status')
+
+    data = res.get_json()
+    assert data['puppet']['status'] == 'Warnung'
+    assert data['puppet']['details'] == '1 Checks fehlgeschlagen'
+
+
+def test_api_system_status_combines_details(client):
+    """Deprecated, Fehler und Updates erscheinen gemeinsam in den Details."""
+    mock_data = {
+        'modules': [
+            {'status': 'current', 'deprecated': True},
+            {'status': 'error', 'deprecated': False},
+            {'status': 'outdated', 'deprecated': False},
+            {'status': 'outdated', 'deprecated': False},
+        ]
+    }
+    with patch.object(server, 'fetch_all_data', return_value=mock_data):
+        res = client.get('/api/system_status')
+
+    data = res.get_json()
+    assert data['puppet']['status'] == 'Warnung'
+    assert data['puppet']['details'] == (
+        '1 Module deprecated, 1 Checks fehlgeschlagen, 2 Updates verfügbar')
+
+
 def test_api_versions_returns_json(client):
     """GET /api/versions gibt die versions.json-Daten zurück."""
     res = client.get('/api/versions')
@@ -936,6 +1036,43 @@ def test_csp_contains_frame_ancestors_none(client):
     res = client.get('/')
     csp = res.headers.get('Content-Security-Policy', '')
     assert "frame-ancestors 'none'" in csp
+
+
+def test_csp_restricts_non_fallback_directives(client):
+    """base-uri/form-action fallen nicht auf default-src zurück und sind
+    explizit gesperrt; Plugins (object-src) ebenso."""
+    csp = client.get('/').headers.get('Content-Security-Policy', '')
+    for directive in ("base-uri 'none'", "form-action 'none'", "object-src 'none'"):
+        assert directive in csp
+
+
+def test_cross_origin_isolation_headers(client):
+    """COOP/CORP auf Seiten und API."""
+    with patch.object(server, 'fetch_modules_data', return_value=[]):
+        for path in ('/', '/api/modules'):
+            res = client.get(path)
+            assert res.headers.get('Cross-Origin-Opener-Policy') == 'same-origin', path
+            assert res.headers.get('Cross-Origin-Resource-Policy') == 'same-origin', path
+
+
+def test_api_sends_no_cors_headers(client):
+    """Fremde Origins bekommen keine CORS-Freigabe (App ist same-origin)."""
+    with patch.object(server, 'fetch_modules_data', return_value=[]):
+        res = client.get('/api/modules', headers={'Origin': 'https://evil.example'})
+    assert 'Access-Control-Allow-Origin' not in res.headers
+
+
+def test_vercel_static_headers_match_flask():
+    """Die in vercel.json für statische HTML-Seiten gesetzten Security-Header
+    entsprechen denen aus Flask (sonst driftet die Prod-CSP ab)."""
+    with open(os.path.join(os.path.dirname(server.__file__), 'vercel.json'),
+              encoding='utf-8') as f:
+        routes = json.load(f)['routes']
+    html_routes = [r for r in routes if 'Content-Security-Policy' in r.get('headers', {})]
+    assert len(html_routes) == 2
+    for route in html_routes:
+        for name, value in server._SECURITY_HEADERS.items():
+            assert route['headers'].get(name) == value, (route['src'], name)
 
 
 def test_api_responses_have_cdn_cache_headers(client):

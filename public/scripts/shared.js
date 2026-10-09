@@ -130,13 +130,16 @@ function _isCacheStale(entry) {
 
 /**
  * Stale-While-Revalidate Fetch:
- * 1. Wenn Cache vorhanden: sofort onData(cachedData, false) aufrufen
- * 2. Im Hintergrund frische Daten holen
- * 3. Bei neuen Daten: onData(freshData, true) aufrufen
- * 4. Kein Cache: onLoading() -> fetch -> onData(freshData, true)
+ * 1. Cache frisch (und kein force): onData(cachedData, true, cacheZeit),
+ *    kein Request
+ * 2. Cache veraltet: sofort onData(cachedData, false, cacheZeit), im
+ *    Hintergrund frische Daten holen -> onData(freshData, true, jetzt)
+ * 3. Kein Cache: onLoading() -> fetch -> onData(freshData, true, jetzt)
  *
  * @param {string} url - API-Endpoint
- * @param {function} onData - Callback(data, isFresh) bei Daten
+ * @param {function} onData - Callback(data, isFresh, fetchedAtMs) bei Daten;
+ *        isFresh=false heißt: Daten stammen aus dem Cache und werden gerade
+ *        revalidiert
  * @param {function} onError - Callback(error, hadCache) bei Fehler; wird nur
  *        aufgerufen wenn kein Cache angezeigt wird oder force gesetzt ist
  * @param {function} onLoading - Callback() wenn kein Cache und geladen wird
@@ -149,16 +152,17 @@ function _isCacheStale(entry) {
 function fetchSWR(url, onData, onError, onLoading, opts) {
     var force = !!(opts && opts.force);
     var cached = _getCache(url);
-    var hadCache = false;
+    var hadCache = !!(cached && cached.data);
+    var revalidate = !hadCache || force || _isCacheStale(cached);
 
-    // Sofort gecachte Daten anzeigen (stale)
-    if (cached && cached.data) {
-        hadCache = true;
-        onData(cached.data, false);
+    // Sofort gecachte Daten anzeigen. Als "frisch" nur, wenn danach kein
+    // Request mehr folgt - sonst bliebe "wird aktualisiert" stehen, obwohl
+    // nichts mehr lädt (z.B. nach dem Prefetch vom Dashboard).
+    if (hadCache) {
+        onData(cached.data, !revalidate, cached.timestamp);
     }
 
-    // Wenn Cache noch frisch ist, nicht neu laden
-    if (hadCache && !force && !_isCacheStale(cached)) {
+    if (!revalidate) {
         return Promise.resolve(cached.data);
     }
 
@@ -170,7 +174,7 @@ function fetchSWR(url, onData, onError, onLoading, opts) {
     // Im Hintergrund frische Daten holen (revalidate)
     return fetchDeduped(url).then(function(data) {
         _setCache(url, data);
-        onData(data, true);
+        onData(data, true, Date.now());
         return data;
     }, function(err) {
         // Bei vorhandenem Cache bleiben die alten Daten stehen; nur bei

@@ -20,7 +20,7 @@ function fetchModules(force) {
 
     return fetchSWR('/api/modules',
         // onData: Daten anzeigen (cached oder frisch)
-        function(data, isFresh) {
+        function(data, isFresh, fetchedAt) {
             modules = (data || []).map(function(m) {
                 // Suchtext einmal vorberechnen statt pro Tastendruck
                 m._search = (m.name + ' ' + m.serverVersion + ' ' + m.forgeVersion).toLowerCase();
@@ -29,7 +29,7 @@ function fetchModules(force) {
             renderTable();
             updateStats();
             renderUpdatedAt(ts, isFresh,
-                isFresh ? new Date().toLocaleTimeString('de-DE') : 'wird aktualisiert');
+                isFresh ? new Date(fetchedAt).toLocaleTimeString('de-DE') : 'wird aktualisiert');
         },
         // onError
         function(e, hadCache) {
@@ -130,9 +130,11 @@ function getSortOrder(m) {
 function updateStats() {
     var current = 0, outdated = 0, errors = 0;
     for (var i = 0; i < modules.length; i++) {
-        if (modules[i].status === 'current') current++;
+        // Deprecated zuerst: wie Badge und Sortierung, sonst zählt ein
+        // deprecated Modul mit aktueller Version als "Aktuell"
+        if (modules[i].deprecated || modules[i].status === 'error') errors++;
+        else if (modules[i].status === 'current') current++;
         else if (modules[i].status === 'outdated') outdated++;
-        else if (modules[i].status === 'error' || modules[i].deprecated) errors++;
     }
     document.getElementById('currentCount').textContent = current;
     document.getElementById('outdatedCount').textContent = outdated;
