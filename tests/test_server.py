@@ -1363,3 +1363,116 @@ def test_puppet_filter_has_label(client):
     """Filter-Input ist per aria-label beschriftet."""
     html = client.get('/puppet.html').data
     assert b'aria-label="Module filtern"' in html
+
+
+# ============================================================================
+# UNIT TESTS - ProxyFix / Rate-Limit-Key
+# ============================================================================
+
+def _remote_addr_app(env):
+    """Mini-App, die die vom Rate-Limiter genutzte Client-IP zurückgibt."""
+    from flask import Flask
+    from flask_limiter.util import get_remote_address
+    mini = Flask(__name__)
+    mini.wsgi_app = server._trust_proxy_headers(mini.wsgi_app, env)
+    mini.add_url_rule('/ip', 'ip', get_remote_address)
+    return mini.test_client()
+
+
+def test_proxy_fix_active_on_vercel():
+    """Auf Vercel (VERCEL=1) wird genau ein Proxy-Hop vertraut."""
+    wrapped = server._trust_proxy_headers(server.app.wsgi_app, {'VERCEL': '1'})
+    assert isinstance(wrapped, server.ProxyFix)
+    assert wrapped.x_for == 1
+    assert wrapped.x_proto == 1
+
+
+def test_proxy_fix_inactive_without_vercel():
+    """Ohne VERCEL bleibt die WSGI-App unverändert."""
+    original = object()
+    assert server._trust_proxy_headers(original, {}) is original
+    assert server._trust_proxy_headers(original, {'VERCEL': ''}) is original
+
+
+def test_vercel_uses_forwarded_client_ip():
+    """Auf Vercel ist X-Forwarded-For der Rate-Limit-Key (nicht die Proxy-IP)."""
+    resp = _remote_addr_app({'VERCEL': '1'}).get(
+        '/ip', headers={'X-Forwarded-For': '203.0.113.7'})
+    assert resp.get_data(as_text=True) == '203.0.113.7'
+
+
+def test_local_ignores_forwarded_for():
+    """Ohne Proxy wird ein gefälschter X-Forwarded-For ignoriert."""
+    resp = _remote_addr_app({}).get(
+        '/ip', headers={'X-Forwarded-For': '203.0.113.7'})
+    assert resp.get_data(as_text=True) == '127.0.0.1'
+
+
+@pytest.mark.skipif(bool(os.environ.get('VERCEL')),
+                    reason='Test-Umgebung läuft mit VERCEL gesetzt')
+def test_rate_limit_not_bypassable_with_fake_forwarded_for(client):
+    """Lokal bringt eine neue Fake-IP pro Request kein frisches Limit."""
+    server.limiter.enabled = True
+    server.limiter.reset()
+    try:
+        with patch('server.load_versions', return_value={}):
+            codes = [
+                client.get('/api/versions',
+                           headers={'X-Forwarded-For': f'198.51.100.{i}'}
+                           ).status_code
+                for i in range(31)
+            ]
+    finally:
+        server.limiter.reset()
+        server.limiter.enabled = False
+    assert codes[:30] == [200] * 30
+    assert codes[30] == 429
+
+
+# ============================================================================
+# UNIT TESTS - Abhängigkeiten
+# ============================================================================
+
+def _requirements_pins():
+    path = os.path.join(os.path.dirname(server.__file__), 'requirements.txt')
+    pins = {}
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.split('#', 1)[0].strip()
+            if line:
+                name, _, version = line.partition('==')
+                pins[name.strip().lower().replace('_', '-')] = version.strip()
+    return pins
+
+
+def test_requirements_are_pinned_exactly():
+    """Jede Abhängigkeit ist mit == auf eine Version festgelegt."""
+    pins = _requirements_pins()
+    assert pins
+    for name, version in pins.items():
+        assert version, f'{name} ist nicht mit == gepinnt'
+
+
+def test_direct_imports_are_pinned():
+    """Jedes direkt importierte Drittpaket steht gepinnt in requirements.txt
+    (urllib3 wird für Retry direkt importiert, nicht nur über requests)."""
+    import ast
+    import sys
+    from importlib.metadata import packages_distributions
+
+    with open(server.__file__, encoding='utf-8') as f:
+        tree = ast.parse(f.read())
+    modules = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(a.name.split('.')[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            modules.add(node.module.split('.')[0])
+    third_party = modules - set(sys.stdlib_module_names)
+    assert 'urllib3' in third_party
+
+    dists = packages_distributions()
+    pins = _requirements_pins()
+    for module in sorted(third_party):
+        names = {d.lower().replace('_', '-') for d in dists.get(module, [module])}
+        assert names & pins.keys(), f'{module} fehlt in requirements.txt'
