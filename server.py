@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import operator
+import re
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -144,6 +146,63 @@ def load_versions():
 
 
 # ============================================================================
+# DECKELUNG (ein anderes Modul begrenzt die nutzbare Version)
+# ============================================================================
+
+_VERSION_RE = re.compile(r'\d+(?:\.\d+)*')
+_CLAUSE_RE = re.compile(r'\s*(>=|<=|>|<|=)?\s*(\d+(?:\.\d+)*)\s*,?')
+_CONSTRAINT_OPS = {'>=': operator.ge, '<=': operator.le, '>': operator.gt,
+                   '<': operator.lt, '=': operator.eq}
+
+
+def _version_key(text):
+    """'1.4.0-0-9' -> (1, 4, 0, 0) für numerische Vergleiche; None ohne Version."""
+    m = _VERSION_RE.search(str(text or ''))
+    if not m:
+        return None
+    parts = [int(p) for p in m.group(0).split('.')]
+    return tuple(parts + [0] * (4 - len(parts)))
+
+
+def _parse_constraint(text):
+    """Versionsbereich in Puppet-Schreibweise auswerten.
+
+    '>= 1.2.0 < 2.0.0' (Komma optional) -> Liste von (Operator, Version).
+    None, wenn die Angabe leer oder nicht auswertbar ist.
+    """
+    text = str(text or '')
+    clauses, pos = [], 0
+    while pos < len(text):
+        m = _CLAUSE_RE.match(text, pos)
+        if not m:
+            return None
+        clauses.append((_CONSTRAINT_OPS[m.group(1) or '='], _version_key(m.group(2))))
+        pos = m.end()
+    return clauses or None
+
+
+def _satisfies(version, clauses):
+    key = _version_key(version)
+    return key is not None and all(op(key, ref) for op, ref in clauses)
+
+
+def _split_module_entry(entry):
+    """Ein Modul in versions.json ist eine Version oder ein Objekt mit Deckelung.
+
+    {"installed": "1.2.3", "constraint": "< 2.0.0",
+     "constrained_by": ["dsc-auditpolicydsc ..."], "note": "..."}
+    """
+    if not isinstance(entry, dict):
+        return entry, None
+    cap = {
+        'constraint': entry.get('constraint', ''),
+        'constrainedBy': list(entry.get('constrained_by') or []),
+        'note': entry.get('note', ''),
+    }
+    return entry.get('installed', ''), cap
+
+
+# ============================================================================
 # CONNECTION POOLING (autoresearch-inspired: reuse connections, reduce overhead)
 # ============================================================================
 
@@ -204,13 +263,42 @@ def _module_result(name, version, url):
 # /v3/modules/<slug>: der Modul-Endpoint liefert README, Changelog, Reference
 # und die komplette Release-Liste mit (~330 KB pro Modul), hier ~2 KB.
 _FORGE_RELEASES_URL = 'https://forgeapi.puppet.com/v3/releases'
+_FORGE_MODULES_URL = 'https://forgeapi.puppet.com/v3/modules/'
 _FORGE_EXCLUDE_FIELDS = 'readme changelog license reference metadata tasks plans'
 
 
-def _forge_result(module_name, installed_version):
-    return _module_result(
+def _forge_result(module_name, installed_version, cap=None):
+    result = _module_result(
         module_name, installed_version,
         f'https://forge.puppet.com/modules/{module_name.replace("-", "/", 1)}')
+    if cap:
+        result.update(cap)
+    return result
+
+
+def _highest_allowed_version(session, module_name, clauses):
+    """Höchste Forge-Release innerhalb der Deckelung (z.B. 1.2.4 bei < 2.0.0).
+
+    Nur für gedeckelte Module, deren neueste Version außerhalb liegt: der
+    Modul-Endpoint listet alle Releases (~40 KB statt ~2 KB). Bei Fehlern
+    None - das Modul bleibt dann 'outdated', statt ein Update zu verstecken.
+    """
+    try:
+        response = session.get(_FORGE_MODULES_URL + module_name,
+                               params={'exclude_fields': _FORGE_EXCLUDE_FIELDS},
+                               timeout=_REQUEST_TIMEOUT)
+        if response.status_code != 200:
+            logger.warning("Forge API status %d for %s (Releases)",
+                           response.status_code, module_name)
+            return None
+        releases = response.json().get('releases') or []
+    except (requests.RequestException, ValueError):
+        logger.warning("Release-Liste für %s nicht abrufbar", module_name)
+        return None
+    allowed = [r['version'] for r in releases
+               if r.get('version') and not r.get('deleted_at')
+               and _satisfies(r['version'], clauses)]
+    return max(allowed, key=_version_key, default=None)
 
 
 def _github_result(repo_name, tracked_version):
@@ -218,9 +306,14 @@ def _github_result(repo_name, tracked_version):
                           f'https://github.com/{repo_name}')
 
 
-def _fetch_single_module(module_name, installed_version):
-    """Holt Daten für ein einzelnes Puppet-Modul vom Forge."""
-    module_data = _forge_result(module_name, installed_version)
+def _fetch_single_module(module_name, installed_version, cap=None):
+    """Holt Daten für ein einzelnes Puppet-Modul vom Forge.
+
+    Mit Deckelung (cap) und neuester Version außerhalb des erlaubten
+    Bereichs zählt die höchste erlaubte Release: ist sie installiert, ist
+    der Status 'capped' (kein Upgrade-Pfad), sonst 'outdated'.
+    """
+    module_data = _forge_result(module_name, installed_version, cap)
 
     session = _get_http_session()
     try:
@@ -242,6 +335,18 @@ def _fetch_single_module(module_name, installed_version):
             if forge_version:
                 module_data['forgeVersion'] = forge_version
                 module_data['status'] = 'current' if installed_version == forge_version else 'outdated'
+
+            clauses = _parse_constraint(cap['constraint']) if cap else None
+            if cap and cap['constraint'] and clauses is None:
+                logger.warning("Ungültige constraint für %s: %r", module_name, cap['constraint'])
+            if (clauses and module_data['status'] == 'outdated'
+                    and not _satisfies(forge_version, clauses)):
+                allowed = _highest_allowed_version(session, module_name, clauses)
+                if allowed:
+                    module_data['allowedVersion'] = allowed
+                    installed_key = _version_key(installed_version)
+                    if installed_key and installed_key >= _version_key(allowed):
+                        module_data['status'] = 'capped'
 
             module_data['deprecated'] = (release.get('module') or {}).get('deprecated_at') is not None
         else:
@@ -403,11 +508,11 @@ def _fetch_all_data_uncached():
     github_releases = versions.get('github_releases', {})
 
     # future -> Builder für das Timeout-Ergebnis
-    all_futures = {
-        _executor.submit(_fetch_single_module, name, version):
-            partial(_forge_result, name, version)
-        for name, version in installed_modules.items()
-    }
+    all_futures = {}
+    for name, entry in installed_modules.items():
+        version, cap = _split_module_entry(entry)
+        future = _executor.submit(_fetch_single_module, name, version, cap)
+        all_futures[future] = partial(_forge_result, name, version, cap)
     all_futures.update({
         _executor.submit(_fetch_single_github_release, name, version):
             partial(_github_result, name, version)
@@ -518,6 +623,7 @@ def get_system_status():
 
         # Puppet-Analyse
         outdated_count = 0
+        capped_count = 0
         deprecated_count = 0
         error_count = 0
         for module in modules:
@@ -525,6 +631,8 @@ def get_system_status():
                 deprecated_count += 1
             elif module.get('status') == 'outdated':
                 outdated_count += 1
+            elif module.get('status') == 'capped':
+                capped_count += 1
             elif module.get('status') == 'error':
                 error_count += 1
 
@@ -537,11 +645,17 @@ def get_system_status():
             details.append(_plural(error_count, 'Check', 'Checks') + " fehlgeschlagen")
         if outdated_count:
             details.append(_plural(outdated_count, 'Update', 'Updates') + " verfügbar")
+        if capped_count:
+            details.append(_plural(capped_count, 'Modul', 'Module') + " gedeckelt")
 
         if deprecated_count or error_count:
             puppet_status = {"status": "Warnung", "details": ", ".join(details)}
         elif outdated_count:
             puppet_status = {"status": "Info", "details": ", ".join(details)}
+        elif capped_count:
+            # Gedeckelt heißt: kein Upgrade-Pfad, also nichts zu tun
+            puppet_status = {"status": "OK",
+                             "details": "Keine offenen Updates, " + ", ".join(details)}
         else:
             puppet_status = {"status": "OK", "details": "Alle Module aktuell"}
 

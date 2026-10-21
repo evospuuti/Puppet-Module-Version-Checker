@@ -36,7 +36,25 @@ pytest tests/
 
 **`versions.json`**:
 
-- `puppet_modules`: Modulname → installierte Version
+- `puppet_modules`: Modulname → installierte Version. Deckelt ein anderes
+  Modul die nutzbare Version, steht statt der Version ein Objekt:
+
+  ```json
+  "puppetlabs-pwshlib": {
+    "installed": "1.2.3",
+    "constraint": "< 2.0.0",
+    "constrained_by": ["dsc-auditpolicydsc 1.4.0-0-9 (>= 0.9.0 < 2.0.0)"],
+    "note": "Freitext, warum es keinen Upgrade-Pfad gibt"
+  }
+  ```
+
+  `constraint` in Puppet-Schreibweise (`>= 1.2.0 < 2.0.0`). Liegt die neueste
+  Forge-Version außerhalb, zählt die höchste Release innerhalb des Bereichs:
+  Ist sie installiert, zeigt das Dashboard **„Gedeckelt“** statt „Update“.
+  Erscheint innerhalb des Bereichs eine neuere Release, wird das wieder als
+  Update gemeldet. Die Deckelung ist von Hand gepflegt: Erlaubt das
+  deckelnde Modul später eine höhere Version, den Eintrag anpassen oder
+  zurück auf eine reine Version setzen.
 - `github_releases`: `owner/repo` → getrackte Version
 
 Empfohlen: Mit der Umgebungsvariable `GITHUB_TOKEN` werden GitHub-Abfragen
@@ -50,7 +68,7 @@ laufen auf HTTP 403. Ein Fine-grained Token ohne Berechtigungen reicht
 | Endpoint | Beschreibung |
 |---|---|
 | `GET /api/modules` | Puppet Module + GitHub Releases mit Forge-/Release-Vergleich |
-| `GET /api/system_status` | Zusammenfassung für das Dashboard (deprecated oder fehlgeschlagene Checks → `Warnung`, nur Updates → `Info`) |
+| `GET /api/system_status` | Zusammenfassung für das Dashboard (deprecated oder fehlgeschlagene Checks → `Warnung`, nur Updates → `Info`, nur gedeckelte Module → `OK`) |
 | `GET /api/versions` | Rohdaten aus `versions.json` |
 
 Die Ergebnisse werden serverseitig 5 Minuten im Speicher gecacht (ein

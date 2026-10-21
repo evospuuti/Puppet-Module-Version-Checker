@@ -10,16 +10,23 @@
     "puppetlabs-facts": "1.7.0",
     "puppetlabs-inifile": "6.4.1",
     "puppetlabs-powershell": "6.1.0",
-    "puppetlabs-pwshlib": "1.1.1",
+    "puppetlabs-pwshlib": {
+      "installed": "1.2.3",
+      "constraint": "< 2.0.0",
+      "constrained_by": [
+        "dsc-auditpolicydsc 1.4.0-0-9 (>= 0.9.0 < 2.0.0)"
+      ],
+      "note": "Auch die neueste dsc-auditpolicydsc (1.4.0-0-13) erlaubt nur < 2.0.0."
+    },
     "puppetlabs-registry": "5.0.3",
     "puppetlabs-stdlib": "9.7.0",
     "saz-sudo": "9.0.2"
   },
   "github_releases": {
-    "voxpupuli/puppetboard": "7.0.1"
+    "voxpupuli/puppetboard": "7.0.2"
   },
   "_meta": {
-    "last_updated": "2026-08-18",
-    "description": "Tracked versions for Puppet Forge and GitHub Releases"
+    "last_updated": "2026-10-21",
+    "description": "Tracked versions for Puppet Forge and GitHub Releases. Ein Modul kann statt einer Version ein Objekt mit installed/constraint/constrained_by/note sein, wenn ein anderes Modul es deckelt."
   }
 }

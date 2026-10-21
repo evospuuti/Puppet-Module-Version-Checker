@@ -88,7 +88,7 @@ function renderTable() {
         var m = filtered[i];
         var tr = document.createElement('tr');
         tr.innerHTML =
-            '<td><strong>' + escapeHtml(m.name) + '</strong></td>' +
+            '<td><strong>' + escapeHtml(m.name) + '</strong>' + buildCapInfo(m) + '</td>' +
             '<td><code>' + escapeHtml(m.serverVersion) + '</code></td>' +
             '<td><code>' + escapeHtml(m.forgeVersion) + '</code></td>' +
             '<td><span class="badge ' + getBadgeClass(m) + '">' + getStatusText(m) + '</span></td>' +
@@ -121,30 +121,49 @@ function updateSortHeaders() {
 }
 
 function getSortOrder(m) {
-    if (m.deprecated) return 3;
-    if (m.status === 'error') return 2;
-    if (m.status === 'outdated') return 1;
+    if (m.deprecated) return 4;
+    if (m.status === 'error') return 3;
+    if (m.status === 'outdated') return 2;
+    if (m.status === 'capped') return 1;
     return 0;
 }
 
 function updateStats() {
-    var current = 0, outdated = 0, errors = 0;
+    var current = 0, outdated = 0, capped = 0, errors = 0;
     for (var i = 0; i < modules.length; i++) {
         // Deprecated zuerst: wie Badge und Sortierung, sonst zählt ein
         // deprecated Modul mit aktueller Version als "Aktuell"
         if (modules[i].deprecated || modules[i].status === 'error') errors++;
         else if (modules[i].status === 'current') current++;
         else if (modules[i].status === 'outdated') outdated++;
+        else if (modules[i].status === 'capped') capped++;
     }
     document.getElementById('currentCount').textContent = current;
     document.getElementById('outdatedCount').textContent = outdated;
+    document.getElementById('cappedCount').textContent = capped;
     document.getElementById('errorCount').textContent = errors;
+}
+
+// Unter dem Modulnamen: erlaubter Bereich, wer deckelt und warum
+function buildCapInfo(m) {
+    if (!m.constraint && !(m.constrainedBy && m.constrainedBy.length) && !m.note) return '';
+    var lines = [];
+    if (m.constraint) {
+        lines.push('erlaubt: <code>' + escapeHtml(m.constraint) + '</code>' +
+            (m.allowedVersion ? ', höchste: <code>' + escapeHtml(m.allowedVersion) + '</code>' : ''));
+    }
+    if (m.constrainedBy && m.constrainedBy.length) {
+        lines.push('gedeckelt durch: ' + escapeHtml(m.constrainedBy.join(' · ')));
+    }
+    if (m.note) lines.push(escapeHtml(m.note));
+    return '<div class="cap-info text-muted text-small">' + lines.join('<br>') + '</div>';
 }
 
 function getBadgeClass(m) {
     if (m.deprecated) return 'badge-danger';
     if (m.status === 'current') return 'badge-success';
     if (m.status === 'outdated') return 'badge-warning';
+    if (m.status === 'capped') return 'badge-info';
     return 'badge-danger';
 }
 
@@ -152,5 +171,6 @@ function getStatusText(m) {
     if (m.deprecated) return 'Deprecated';
     if (m.status === 'current') return 'Aktuell';
     if (m.status === 'outdated') return 'Update';
+    if (m.status === 'capped') return 'Gedeckelt';
     return 'Fehler';
 }
