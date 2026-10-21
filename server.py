@@ -22,10 +22,23 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 
-# Hinter dem Vercel-Proxy steht die Client-IP in X-Forwarded-For. Ohne
-# ProxyFix sieht der Rate-Limiter nur die Proxy-IP und alle Nutzer teilen
-# sich ein gemeinsames Limit.
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+def _trust_proxy_headers(wsgi_app, env=None):
+    """ProxyFix nur auf Vercel (Vercel setzt VERCEL=1).
+
+    Hinter dem Vercel-Proxy steht die Client-IP in X-Forwarded-For; Vercel
+    überschreibt den Header, der Client kann ihn nicht fälschen. Ohne
+    ProxyFix sähe der Rate-Limiter dort nur die Proxy-IP und alle Nutzer
+    teilten sich ein Limit. Ohne vorgeschalteten Proxy (lokal, HOST=0.0.0.0)
+    käme der Header direkt vom Client: jeder Request mit neuer Fake-IP
+    bekäme ein frisches Limit.
+    """
+    env = os.environ if env is None else env
+    if env.get('VERCEL'):
+        return ProxyFix(wsgi_app, x_for=1, x_proto=1)
+    return wsgi_app
+
+
+app.wsgi_app = _trust_proxy_headers(app.wsgi_app)
 
 # Kompaktes JSON ohne \uXXXX-Escapes: Umlaute (z.B. in Statusdetails) werden
 # als UTF-8 ausgeliefert statt 6 Byte pro Zeichen (kleinere Antworten).

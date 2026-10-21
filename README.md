@@ -21,6 +21,10 @@ Der Werkzeug-Debugger (interaktive Python-Konsole im Browser) ist
 standardmäßig aus. Aktivieren nur lokal mit `FLASK_DEBUG=1`; `HOST=0.0.0.0`
 macht den Server im LAN erreichbar - nie beides zusammen.
 
+`X-Forwarded-For` wird nur auf Vercel ausgewertet (`VERCEL=1`, setzt Vercel
+selbst). Lokal zählt die echte Verbindungs-IP für das Rate-Limit, ein
+gefälschter Header hebelt es nicht aus.
+
 ## Tests
 
 ```bash
