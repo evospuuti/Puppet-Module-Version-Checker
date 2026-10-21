@@ -112,11 +112,25 @@ def test_load_versions_contains_puppet_modules():
 
 
 def test_load_versions_puppet_modules_have_versions():
-    """Alle Puppet Module haben eine Versionsangabe."""
+    """Alle Puppet Module haben eine Versionsangabe (direkt oder als installed)."""
     result = server.load_versions()
-    for name, version in result.get('puppet_modules', {}).items():
+    for name, entry in result.get('puppet_modules', {}).items():
+        version, _ = server._split_module_entry(entry)
         assert isinstance(version, str), f"{name} hat keine String-Version"
         assert len(version) > 0, f"{name} hat leere Version"
+
+
+def test_load_versions_constraints_are_valid():
+    """Jede Deckelung in versions.json ist auswertbar und die installierte
+    Version liegt im erlaubten Bereich."""
+    for name, entry in server.load_versions()['puppet_modules'].items():
+        version, cap = server._split_module_entry(entry)
+        if cap is None:
+            continue
+        clauses = server._parse_constraint(cap['constraint'])
+        assert clauses, f"{name}: constraint nicht auswertbar"
+        assert server._satisfies(version, clauses), f"{name}: {version} außerhalb"
+        assert cap['constrainedBy'], f"{name}: constrained_by fehlt"
 
 
 def test_load_versions_meta_exists():
@@ -551,7 +565,7 @@ def test_fetch_all_data_sorted_by_name(multi_module_versions):
     der die parallelen Checks fertig werden (stabiler ETag)."""
     delays = {'puppetlabs-stdlib': 0.0, 'puppetlabs-apt': 0.05, 'puppet-archive': 0.1}
 
-    def fetch(name, version):
+    def fetch(name, version, cap=None):
         time.sleep(delays[name])
         return server._forge_result(name, version)
 
@@ -580,7 +594,7 @@ def test_fetch_all_data_deadline_marks_pending_as_timeout():
     statt die Antwort zu blockieren."""
     release = threading.Event()
 
-    def slow_module(name, version):
+    def slow_module(name, version, cap=None):
         release.wait(5)
         return server._forge_result(name, version)
 
@@ -1476,3 +1490,225 @@ def test_direct_imports_are_pinned():
     for module in sorted(third_party):
         names = {d.lower().replace('_', '-') for d in dists.get(module, [module])}
         assert names & pins.keys(), f'{module} fehlt in requirements.txt'
+
+
+# ============================================================================
+# UNIT TESTS - Deckelung (constraint)
+# ============================================================================
+
+PWSHLIB_CAP = {'constraint': '< 2.0.0',
+               'constrainedBy': ['dsc-auditpolicydsc 1.4.0-0-9 (>= 0.9.0 < 2.0.0)'],
+               'note': 'test'}
+
+
+def _forge_get(latest, releases=None, releases_status=200):
+    """Fake für Session.get: Releases-Endpoint (neueste Version) und
+    Modul-Endpoint (alle Releases)."""
+    calls = []
+
+    def get(url, params=None, timeout=None, headers=None):
+        calls.append(url)
+        resp = MagicMock()
+        if url == server._FORGE_RELEASES_URL:
+            resp.status_code = 200
+            resp.json.return_value = _forge_release(latest)
+        else:
+            resp.status_code = releases_status
+            resp.json.return_value = {'releases': [
+                r if isinstance(r, dict) else {'version': r} for r in (releases or [])]}
+        return resp
+
+    return get, calls
+
+
+def test_parse_constraint_puppet_syntax():
+    """Puppet-Schreibweise mit und ohne Komma wird ausgewertet."""
+    for text in ('>= 1.2.0 < 2.0.0', '>=1.2.0, <2.0.0', ' >= 1.2 < 2 '):
+        clauses = server._parse_constraint(text)
+        assert clauses, text
+        assert server._satisfies('1.2.3', clauses)
+        assert not server._satisfies('2.0.0', clauses)
+        assert not server._satisfies('1.1.9', clauses)
+
+
+def test_parse_constraint_invalid_is_none():
+    """Leere oder unbekannte Angaben sind nicht auswertbar."""
+    for text in ('', '   ', 'latest', '~> 1.2', '< 2.0.0 oder so', None):
+        assert server._parse_constraint(text) is None, text
+
+
+def test_satisfies_handles_suffix_versions():
+    """'1.4.0-0-9' (dsc-Module) wird über die numerische Version verglichen."""
+    clauses = server._parse_constraint('< 1.5.0')
+    assert server._satisfies('1.4.0-0-9', clauses)
+    assert not server._satisfies('kaputt', clauses)
+
+
+def test_split_module_entry():
+    """String bleibt Version, Objekt liefert Version und Deckelung."""
+    assert server._split_module_entry('9.7.0') == ('9.7.0', None)
+    version, cap = server._split_module_entry({
+        'installed': '1.2.3', 'constraint': '< 2.0.0',
+        'constrained_by': ['x'], 'note': 'n'})
+    assert version == '1.2.3'
+    assert cap == {'constraint': '< 2.0.0', 'constrainedBy': ['x'], 'note': 'n'}
+
+
+def test_fetch_single_module_capped():
+    """Neueste Version außerhalb, höchste erlaubte installiert -> capped."""
+    get, calls = _forge_get('2.1.1', ['2.1.1', '2.0.0', '1.2.3', '1.2.2'])
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', PWSHLIB_CAP)
+
+    assert result['status'] == 'capped'
+    assert result['forgeVersion'] == '2.1.1'
+    assert result['allowedVersion'] == '1.2.3'
+    assert result['constraint'] == '< 2.0.0'
+    assert result['constrainedBy'] == PWSHLIB_CAP['constrainedBy']
+    assert len(calls) == 2
+
+
+def test_fetch_single_module_capped_but_update_in_range():
+    """Neuere Release innerhalb der Deckelung ist ein echtes Update."""
+    get, _ = _forge_get('2.1.1', ['2.1.1', '1.2.4', '1.2.3'])
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', PWSHLIB_CAP)
+
+    assert result['status'] == 'outdated'
+    assert result['allowedVersion'] == '1.2.4'
+
+
+def test_fetch_single_module_capped_ignores_deleted_releases():
+    """Zurückgezogene Releases zählen nicht als erlaubtes Update."""
+    get, _ = _forge_get('2.1.1', ['2.1.1', {'version': '1.2.4', 'deleted_at': '2026-01-01'},
+                                  '1.2.3'])
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', PWSHLIB_CAP)
+
+    assert result['status'] == 'capped'
+    assert result['allowedVersion'] == '1.2.3'
+
+
+def test_fetch_single_module_constraint_not_limiting():
+    """Liegt die neueste Version im Bereich, bleibt es ein normales Update
+    ohne zweite Abfrage."""
+    cap = dict(PWSHLIB_CAP, constraint='< 3.0.0')
+    get, calls = _forge_get('2.1.1')
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', cap)
+
+    assert result['status'] == 'outdated'
+    assert 'allowedVersion' not in result
+    assert calls == [server._FORGE_RELEASES_URL]
+
+
+def test_fetch_single_module_capped_current_needs_no_release_list():
+    """Installiert == neueste Version: current, keine zweite Abfrage."""
+    get, calls = _forge_get('1.2.3')
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', PWSHLIB_CAP)
+
+    assert result['status'] == 'current'
+    assert len(calls) == 1
+
+
+def test_fetch_single_module_release_list_error_stays_outdated():
+    """Ist die Release-Liste nicht abrufbar, wird kein Update versteckt."""
+    get, _ = _forge_get('2.1.1', releases_status=500)
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', PWSHLIB_CAP)
+
+    assert result['status'] == 'outdated'
+    assert 'allowedVersion' not in result
+    assert 'error' not in result
+
+
+def test_fetch_single_module_release_list_timeout_stays_outdated():
+    """Timeout der zweiten Abfrage macht das Modul nicht zum Fehler."""
+    first = MagicMock()
+    first.status_code = 200
+    first.json.return_value = _forge_release('2.1.1')
+    with patch.object(server.requests.Session, 'get',
+                      side_effect=[first, server.requests.Timeout]):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', PWSHLIB_CAP)
+
+    assert result['status'] == 'outdated'
+
+
+def test_fetch_single_module_invalid_constraint_is_plain_update():
+    """Nicht auswertbare Deckelung: normales Update, keine zweite Abfrage."""
+    cap = dict(PWSHLIB_CAP, constraint='irgendwas')
+    get, calls = _forge_get('2.1.1')
+    with patch.object(server.requests.Session, 'get', side_effect=get):
+        result = server._fetch_single_module('puppetlabs-pwshlib', '1.2.3', cap)
+
+    assert result['status'] == 'outdated'
+    assert len(calls) == 1
+
+
+def test_fetch_all_data_passes_cap_from_versions_json():
+    """Objekt-Einträge kommen als String-Version plus Deckelung an."""
+    versions = {'puppet_modules': {'puppetlabs-pwshlib': {
+        'installed': '1.2.3', 'constraint': '< 2.0.0',
+        'constrained_by': ['dsc-auditpolicydsc'], 'note': 'n'}}}
+    get, _ = _forge_get('2.1.1', ['2.1.1', '1.2.3'])
+    with patch.object(server, 'load_versions', return_value=versions), \
+         patch.object(server.requests.Session, 'get', side_effect=get):
+        module = server.fetch_all_data()['modules'][0]
+
+    assert module['serverVersion'] == '1.2.3'
+    assert module['status'] == 'capped'
+    assert module['constrainedBy'] == ['dsc-auditpolicydsc']
+
+
+def test_fetch_all_data_timeout_keeps_cap_fields():
+    """Auch das Timeout-Ergebnis trägt String-Version und Deckelung."""
+    release = threading.Event()
+
+    def slow_module(name, version, cap=None):
+        release.wait(5)
+        return server._forge_result(name, version, cap)
+
+    versions = {'puppet_modules': {'slow-mod': {'installed': '1.0.0',
+                                                'constraint': '< 2.0.0'}}}
+    try:
+        with patch.object(server, 'load_versions', return_value=versions), \
+             patch.object(server, '_fetch_single_module', side_effect=slow_module), \
+             patch.object(server, '_FETCH_DEADLINE', 0.2):
+            module = server.fetch_all_data()['modules'][0]
+    finally:
+        release.set()
+
+    assert module['error'] == 'Timeout'
+    assert module['serverVersion'] == '1.0.0'
+    assert module['constraint'] == '< 2.0.0'
+
+
+def test_api_system_status_only_capped_is_ok(client):
+    """Nur gedeckelte Module: OK, aber in den Details sichtbar."""
+    mock_data = {'modules': [{'status': 'current', 'deprecated': False},
+                             {'status': 'capped', 'deprecated': False}]}
+    with patch.object(server, 'fetch_all_data', return_value=mock_data):
+        data = client.get('/api/system_status').get_json()
+
+    assert data['puppet']['status'] == 'OK'
+    assert data['puppet']['details'] == 'Keine offenen Updates, 1 Modul gedeckelt'
+
+
+def test_api_system_status_capped_with_updates(client):
+    """Gedeckelte Module zählen nicht als Update."""
+    mock_data = {'modules': [{'status': 'outdated', 'deprecated': False},
+                             {'status': 'capped', 'deprecated': False},
+                             {'status': 'capped', 'deprecated': False}]}
+    with patch.object(server, 'fetch_all_data', return_value=mock_data):
+        data = client.get('/api/system_status').get_json()
+
+    assert data['puppet']['status'] == 'Info'
+    assert data['puppet']['details'] == '1 Update verfügbar, 2 Module gedeckelt'
+
+
+def test_puppet_page_has_capped_stat(client):
+    """Puppet-Seite hat eine eigene Kachel für gedeckelte Module."""
+    html = client.get('/puppet.html').data
+    assert b'id="cappedCount"' in html
+    assert b'Gedeckelt' in html
